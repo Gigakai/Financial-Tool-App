@@ -1,0 +1,25 @@
+{
+    "E001": {
+        "companyName": "Tech Innovators",
+        "description": "A leading company in tech solutions.",
+        "currentCash": 250000000,
+        "industry": "Technology",
+        "riskProfile": "Medium",
+        "budgets": {
+            "personal": 180000,
+            "marketing": 30000,
+            "operaciones": 20000
+        }
+    },
+    "E002": {
+        "companyName": "Health Solutions",
+        "currentCash": 1200000,
+        "industry": "Healthcare",
+        "riskProfile": "Low",
+        "budgets": {
+            "personal": 100000,
+            "marketing": 50000,
+            "operaciones": 30000
+        }
+    }
+}
