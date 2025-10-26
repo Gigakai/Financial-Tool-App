@@ -2,6 +2,7 @@ import fs from 'fs';
 import csv from 'csv-parser';
 import dotenv from 'dotenv';
 import mysql from 'mysql2/promise';
+import twilio from 'twilio';
 
 dotenv.config();
 
@@ -38,7 +39,7 @@ interface Transaction {
     monto: number;
 }
 
-interface SentinelAlert {
+export interface SentinelAlert {
     id: string;
     type: 'CRITICAL' | 'WARNING' | 'INFO';
     category: string;
@@ -436,40 +437,76 @@ export async function runSentinelAnalysis(empresa_id: string): Promise<SentinelA
 }
 
 // ENVÍO DE ALERTAS POR WHATSAPP
-export async function sendWhatsAppAlert(alert: SentinelAlert): Promise<boolean> {
-    const phoneNumber = process.env.WHATSAPP_NUMBER || '5215512345678'; // Hardcoded por ahora
+export async function sendWhatsAppAlert(alert: SentinelAlert | any): Promise<boolean> {
+    const phoneNumber = process.env.WHATSAPP_NUMBER || '5215512345678';
+    
+    // Manejar formato de alertas MCP (que tienen 'message' en lugar de 'title' y 'description')
+    const title = alert.title || `Alerta: ${alert.category || 'Financiera'}`;
+    const description = alert.description || alert.message || 'Alerta del sistema';
+    const severity = alert.severity || 'Alto';
     
     // Formatear mensaje
     const message = `
-🚨 *${alert.title}*
+🚨 *ALERTA SENTINELA*
 
-${alert.description}
+*${title}*
 
-📊 Severidad: *${alert.severity}*
-⏰ ${new Date(alert.timestamp).toLocaleString('es-MX')}
+${description}
 
-${alert.recommendation ? `💡 Recomendación:\n${alert.recommendation}` : ''}
+📊 Severidad: *${severity}*
+⏰ ${new Date(alert.timestamp || new Date()).toLocaleString('es-MX')}
+
+${alert.recommendation ? `💡 *Recomendación:*\n${alert.recommendation}` : ''}
     `.trim();
 
-    console.log(`[Sentinel] Enviando alerta por WhatsApp a ${phoneNumber}`);
+    console.log(`\n[Sentinel] 📱 Enviando alerta por WhatsApp a +${phoneNumber}`);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log(message);
-    console.log('---');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
-    // TODO: Integrar con API de WhatsApp Business (Twilio, WhatsApp Cloud API, etc.)
-    // Por ahora solo logueamos el mensaje
-    
+    // Verificar si Twilio está configurado
+    const accountSid = process.env.TWILIO_ACCOUNT_SID;
+    const authToken = process.env.TWILIO_AUTH_TOKEN;
+    const fromNumber = process.env.TWILIO_WHATSAPP_FROM || 'whatsapp:+14155238886';
+
+    if (!accountSid || !authToken) {
+        console.log('[Sentinel] ⚠️  Twilio no configurado. WhatsApp solo simulado (ver mensaje arriba).');
+        console.log('[Sentinel] 💡 Para activar WhatsApp real:');
+        console.log('[Sentinel]    1. Ve a https://www.twilio.com/try-twilio');
+        console.log('[Sentinel]    2. Crea cuenta gratuita');
+        console.log('[Sentinel]    3. Copia ACCOUNT_SID y AUTH_TOKEN a tu .env');
+        console.log('[Sentinel]    4. Conecta tu número al Twilio Sandbox\n');
+        return false;
+    }
+
     try {
-        // Aquí iría la integración real con WhatsApp
-        // Ejemplo con Twilio:
-        // await twilioClient.messages.create({
-        //     from: 'whatsapp:+14155238886',
-        //     to: `whatsapp:${phoneNumber}`,
-        //     body: message
-        // });
+        // Inicializar cliente de Twilio
+        const client = twilio(accountSid, authToken);
+
+        // Enviar mensaje
+        const twilioMessage = await client.messages.create({
+            from: fromNumber,
+            to: `whatsapp:+${phoneNumber}`,
+            body: message
+        });
+
+        console.log(`[Sentinel] ✅ WhatsApp enviado exitosamente!`);
+        console.log(`[Sentinel] 📱 Message SID: ${twilioMessage.sid}\n`);
         
         return true;
     } catch (error: any) {
-        console.error('[Sentinel] Error enviando WhatsApp:', error.message);
+        console.error(`[Sentinel] ❌ Error enviando WhatsApp: ${error.message}`);
+        
+        // Mensajes de error más específicos
+        if (error.code === 21608) {
+            console.error('[Sentinel] 💡 El número no está registrado en el Twilio Sandbox.');
+            console.error('[Sentinel]    Envía "join <sandbox-code>" desde tu WhatsApp a +1 415 523 8886\n');
+        } else if (error.code === 20003) {
+            console.error('[Sentinel] 💡 Credenciales de Twilio inválidas. Verifica ACCOUNT_SID y AUTH_TOKEN\n');
+        } else {
+            console.error('[Sentinel] 💡 Error:', error.message, '\n');
+        }
+        
         return false;
     }
 }

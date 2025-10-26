@@ -653,11 +653,17 @@ app.get('/check-alerts/:empresa_id', async (req, res) => {
         
         console.log(`[Bridge] Total de alertas para ${empresa_id}: ${allAlerts.length} (${sentinelAlerts.length} del Sentinela, ${mcpAlerts.length} del MCP)`);
         
-        // Enviar alertas críticas por WhatsApp
-        const criticalAlerts = sentinelAlerts.filter(a => a.severity === 'Crítico');
-        if (criticalAlerts.length > 0) {
-            console.log(`[Bridge] ${criticalAlerts.length} alertas críticas detectadas, enviando por WhatsApp...`);
-            for (const alert of criticalAlerts) {
+        // Enviar alertas críticas y altas por WhatsApp (tanto de Sentinela como de MCP)
+        const urgentAlerts = allAlerts.filter((a: any) => 
+            a.severity === 'Crítico' || 
+            a.severity === 'Alto' || 
+            a.type === 'CRITICAL' ||
+            a.type === 'BUDGET_EXCEEDED'
+        );
+        
+        if (urgentAlerts.length > 0) {
+            console.log(`[Bridge] ${urgentAlerts.length} alertas urgentes detectadas (Crítico/Alto), enviando por WhatsApp...`);
+            for (const alert of urgentAlerts) {
                 await sendWhatsAppAlert(alert);
             }
         }
