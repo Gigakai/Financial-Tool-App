@@ -15,7 +15,7 @@ const Header = ({ onMenuClick, onChatClick }) => {
               <div className="w-8 h-8 bg-gradient-to-br from-banorte-red to-red-700 rounded-lg flex items-center justify-center">
                 <span className="text-white font-bold text-sm">B</span>
               </div>
-              <span className="font-bold text-banorte-gray text-sm">CFO Assistant</span>
+              <span className="font-bold text-banorte-gray text-sm">tu asesor financiero</span>
             </div>
           </div>
 

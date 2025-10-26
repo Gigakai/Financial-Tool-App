@@ -6,11 +6,11 @@ const Sidebar = ({ isOpen, onToggle }) => {
   const location = useLocation()
 
   const menuItems = [
-    { path: '/', icon: Home, label: 'Dashboard' },
-    { path: '/summary', icon: BarChart3, label: 'Summary' },
-    { path: '/simulator', icon: Target, label: 'Simulator' },
-    { path: '/health', icon: Activity, label: 'Health Check' },
-    { path: '/alerts', icon: AlertTriangle, label: 'Alerts' },
+    { path: '/', icon: Home, label: 'Panel' },
+    { path: '/summary', icon: BarChart3, label: 'Resumen' },
+    { path: '/simulator', icon: Target, label: 'Simulador' },
+    { path: '/health', icon: Activity, label: 'Salud Financiera' },
+    { path: '/alerts', icon: AlertTriangle, label: 'Alertas' },
   ]
 
   return (

@@ -6,8 +6,8 @@ const HealthCheck = () => {
   const [healthScore] = useState(72)
 
   // Datos de salud financiera
-  const healthData = {
-    runway: { value: 14, max: 24, status: 'warning', label: 'Runway (meses)' },
+  const metrics = {
+    runway: { value: 14, max: 24, status: 'warning', label: 'Margen de Supervivencia (meses)' },
     cashFlow: { value: 85, max: 100, status: 'good', label: 'Flujo de Caja' },
     profitMargin: { value: 32, max: 100, status: 'good', label: 'Margen de Ganancia' },
     debtRatio: { value: 28, max: 100, status: 'excellent', label: 'Ratio de Deuda' },

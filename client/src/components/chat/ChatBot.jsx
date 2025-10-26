@@ -39,7 +39,7 @@ const ChatBot = ({ isOpen, onClose }) => {
   const quickActions = [
     { icon: Target, label: 'Simular escenario', action: '¿Qué pasaría si contrato un nuevo desarrollador?' },
     { icon: BarChart3, label: 'Ver resumen', action: 'Muéstrame el resumen financiero del mes' },
-    { icon: Activity, label: 'Health Check', action: '¿Cómo está mi salud financiera?' },
+    { icon: Activity, label: 'Chequeo de Salud', action: '¿Cómo está mi salud financiera?' },
     { icon: AlertTriangle, label: 'Alertas', action: '¿Tengo alguna alerta importante?' },
   ]
 
@@ -147,7 +147,7 @@ const ChatBot = ({ isOpen, onClose }) => {
               <BotIcon size={24} className="text-banorte-red" />
             </div>
             <div>
-              <h3 className="font-bold text-lg">CFO Virtual IA</h3>
+              <h3 className="font-bold text-lg">Aegis</h3>
               <div className="flex items-center gap-1 text-xs opacity-90">
                 <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
                 En línea
