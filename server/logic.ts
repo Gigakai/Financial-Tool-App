@@ -94,10 +94,6 @@ export async function calculateRisk(empresa_id: string, recurringCost: number, o
 }
 
 
-// ... (código existente de getAverageMonthlyBurn, getBufferMonthsFromProfile, calculateRisk) ...
-
-// ... (código existente de getAverageMonthlyBurn, getBufferMonthsFromProfile, calculateRisk) ...
-
 export async function checkForFinancialAlerts(empresa_id: string): Promise<any[]> {
     const allStates = JSON.parse(fs.readFileSync('state.json', 'utf-8'));
     const companyState = allStates[empresa_id];
@@ -390,4 +386,80 @@ export async function calculateHealthReport(empresa_id: string) {
             keyInsights: keyInsights
         }
     };
+}
+
+interface ProfitabilityEntry {
+    category: string;
+    totalIngresos: number;
+    totalGastos: number;
+    netProfit: number;
+    profitMargin: number; // %
+}
+
+interface ProfitabilityData {
+    [key: string]: {
+        totalIngresos: number;
+        totalGastos: number;
+    };
+}
+
+export async function calculateProfitability(
+    empresa_id: string,
+    timePeriod: string,
+    startDate?: string,
+    endDate?: string
+): Promise<ProfitabilityEntry[]> {
+
+    const dataByCat: ProfitabilityData = {};
+
+    return new Promise((resolve, reject) => {
+        fs.createReadStream('data.csv')
+            .pipe(csv())
+            .on('data', (row) => {
+                // 1. Filtrar por empresa y rango de fechas
+                if (row.empresa_id !== empresa_id) return;
+                if (!checkDate(row.fecha, timePeriod, startDate, endDate)) return;
+
+                const category = row.categoria || 'Sin Categoría';
+                const amount = parseFloat(row.monto);
+
+                // 2. Inicializar si la categoría es nueva
+                if (!dataByCat[category]) {
+                    dataByCat[category] = { totalIngresos: 0, totalGastos: 0 };
+                }
+
+                // 3. Acumular ingresos o gastos
+                if (row.tipo === 'ingreso') {
+                    dataByCat[category].totalIngresos += amount;
+                } else if (row.tipo === 'gasto') {
+                    dataByCat[category].totalGastos += amount;
+                }
+            })
+            .on('end', () => {
+                // 4. Transformar el mapa en un array con cálculos
+                const report: ProfitabilityEntry[] = Object.keys(dataByCat).map(category => {
+                    const { totalIngresos, totalGastos } = dataByCat[category];
+                    const netProfit = totalIngresos - totalGastos;
+
+                    // Evitar división por cero
+                    const profitMargin = totalIngresos > 0
+                        ? (netProfit / totalIngresos) * 100
+                        : (netProfit < 0 ? -100 : 0); // Si no hay ingresos, el margen es -100% (pérdida) o 0%
+
+                    return {
+                        category,
+                        totalIngresos: parseFloat(totalIngresos.toFixed(2)),
+                        totalGastos: parseFloat(totalGastos.toFixed(2)),
+                        netProfit: parseFloat(netProfit.toFixed(2)),
+                        profitMargin: parseFloat(profitMargin.toFixed(1))
+                    };
+                });
+
+                // 5. Ordenar: las más rentables (mayor netProfit) primero
+                const sortedReport = report.sort((a, b) => b.netProfit - a.netProfit);
+
+                resolve(sortedReport);
+            })
+            .on('error', reject);
+    });
 }

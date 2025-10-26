@@ -1,7 +1,7 @@
 import {McpServer} from "@modelcontextprotocol/sdk/server/mcp.js";
 import {StdioServerTransport} from "@modelcontextprotocol/sdk/server/stdio.js";
 import {z} from "zod";
-import {calculateRisk, getSummary, calculateHealthReport, checkForFinancialAlerts} from "./logic.js";
+import {calculateRisk, getSummary, calculateHealthReport, checkForFinancialAlerts, calculateProfitability} from "./logic.js";
 import * as fs from 'node:fs';
 // Creación del servidor MCP
 const server = new McpServer({
@@ -202,6 +202,69 @@ server.tool(
         };
     }
 )
+
+server.tool(
+    'getProfitabilityAnalysis',
+    'Analiza la rentabilidad (Ingresos vs Gastos) por categoría para encontrar oportunidades de crecimiento. ¡USA ESTA HERRAMIENTA para preguntas como "¿qué área es más rentable?", "¿dónde debo invertir más?", "¿está funcionando marketing?", o "¿qué me da más dinero?"!', {
+        empresa_id: z.string().describe("El ID único de la empresa. Ej: 'E001'"),
+        timePeriod: z.string().optional().default('last_90_days').describe("Rango relativo (ej: 'current_month', 'last_30_days', 'last_90_days'). Se ignora si se provee 'startDate' o 'endDate'."),
+        startDate: z.string().optional().describe("Fecha de inicio exacta del rango. Formato: 'MM/DD/YYYY'."),
+        endDate: z.string().optional().describe("Fecha de fin exacta del rango. Formato: 'MM/DD/YYYY'."),
+    },
+    async (params) => {
+        try {
+            console.log(`[Server] Recibida consulta de Rentabilidad para ${params.empresa_id}`);
+
+            // 1. Obtener el estado de la empresa para contexto
+            const allStates = JSON.parse(fs.readFileSync('state.json', 'utf-8'));
+            const companyState = allStates[params.empresa_id];
+            if (!companyState) {
+                throw new Error(`No hay datos de estado para la empresa con id: ${params.empresa_id}`);
+            }
+
+            // 2. Llamar a la nueva lógica de rentabilidad
+            const report = await calculateProfitability(
+                params.empresa_id,
+                params.timePeriod,
+                params.startDate,
+                params.endDate
+            );
+
+            // 3. Crear el objeto de datos para el LLM
+            const resultForLlm = {
+                companyState: {
+                    name: companyState.companyName,
+                    industry: companyState.industry,
+                    riskProfile: companyState.riskProfile,
+                    description: companyState.description
+                },
+                queryParameters: params,
+                profitabilityReport: report // El array ordenado de categorías
+            };
+
+            // 4. Devolver el objeto como un string JSON
+            return {
+                content: [
+                    {
+                        type: 'text',
+                        text: JSON.stringify(resultForLlm, null, 2)
+                    },
+                ]
+            }
+        } catch (error: any) {
+            console.error(`[Server] Error en getProfitabilityAnalysis: ${error.message}`);
+            return {
+                content: [
+                    {
+                        type: 'text',
+                        text: JSON.stringify({error: true, message: error.message}, null, 2)
+                    }
+                ]
+            }
+        }
+    }
+)
+
 // Escuchar las conexiones entrantes
 console.log("Servidor CFO Virtual listo. Esperando conexiones...");
 (async () => {
