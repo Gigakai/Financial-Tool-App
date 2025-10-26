@@ -104,14 +104,17 @@ async function callMcpToolTextJson(name: string, args: Record<string, unknown>):
  */
 
 async function selectToolWithGemini(prompt: string, empresa_id: string) {
-    const model = gemini.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    const model = gemini.getGenerativeModel({model: 'gemini-2.5-flash'});
 
     const systemPrompt = `
-Eres un enrutador de herramientas (Tool Router) para un sistema financiero MCP.
-Tienes acceso a las siguientes herramientas y debes elegir solo UNA según el prompt del usuario.
+Eres un selector de herramientas (Tool Router) para un sistema financiero conectado por MCP.
+Tu tarea es analizar el prompt del usuario y devolver un JSON que indique qué herramienta usar
+y con qué argumentos. Solo una herramienta a la vez.
+
+Herramientas disponibles:
 
 1️⃣ simulateFinancialScenario:
-- Simula un escenario financiero "What If" (por ejemplo, contratar, invertir, comprar equipo).
+- Simula un escenario financiero hipotético ("qué pasaría si contrato", "si compro", "si invierto").
 - Parámetros: empresa_id, description, recurringCost (opcional), oneTimeCost (opcional)
 
 2️⃣ getFinancialSummary:
@@ -119,75 +122,211 @@ Tienes acceso a las siguientes herramientas y debes elegir solo UNA según el pr
 - Parámetros: empresa_id, tipo ('ingreso' o 'gasto'), timePeriod ('current_month' o 'last_30_days')
 
 3️⃣ getFinancialHealthCheck:
-- Hace un chequeo general de salud financiera.
+- Evalúa la salud financiera general de la empresa.
+- Parámetros: empresa_id
 
 4️⃣ checkForFinancialAlerts:
-- Revisa alertas y riesgos financieros actuales.
+- Revisa si hay alertas o riesgos financieros activos.
+- Parámetros: empresa_id
 
-Tu salida debe ser un JSON con esta forma estricta:
-{
-  "tool": "simulateFinancialScenario" | "getFinancialSummary" | "getFinancialHealthCheck" | "checkForFinancialAlerts",
-  "args": { ...parámetros necesarios... }
-}
+Tu salida DEBE ser un JSON válido (sin texto adicional). Ejemplo exacto de formato:
 
-No des explicaciones. No devuelvas texto adicional. Solo JSON válido.
-
-Ejemplo:
+---
+Ejemplo 1:
+Usuario: "Quiero saber mis gastos del mes pasado"
+Salida:
 {
   "tool": "getFinancialSummary",
   "args": { "empresa_id": "E001", "tipo": "gasto", "timePeriod": "last_30_days" }
 }
+
+Ejemplo 2:
+Usuario: "Simula que contrato dos diseñadores nuevos"
+Salida:
+{
+  "tool": "simulateFinancialScenario",
+  "args": { "empresa_id": "E001", "description": "Contratar dos diseñadores nuevos" }
+}
+
+Ejemplo 3:
+Usuario: "Haz un chequeo general de la empresa"
+Salida:
+{
+  "tool": "getFinancialHealthCheck",
+  "args": { "empresa_id": "E001" }
+}
+
+Ejemplo 4:
+Usuario: "¿Tengo alertas financieras críticas?"
+Salida:
+{
+  "tool": "checkForFinancialAlerts",
+  "args": { "empresa_id": "E001" }
+}
+---
+
+Analiza el siguiente prompt y devuelve SOLO el JSON.
 `;
 
-    // ✅ Cambio aquí: sin "role"
-    const response = await model.generateContent([
-        { text: systemPrompt + "\n\nPrompt del usuario:\n" + prompt }
-    ]);
+    const input = `
+Prompt del usuario:
+${prompt}
+`;
+
+    const response = await model.generateContent([{text: systemPrompt + "\n\n" + input}]);
 
     const raw = response.response?.text?.() ?? '';
+
     try {
-        const parsed = JSON.parse(raw);
+        // 🧼 Limpieza: eliminar ```json, ``` y espacios extra
+        const clean = raw
+            .replace(/```json/i, '')
+            .replace(/```/g, '')
+            .trim();
+
+        const parsed = JSON.parse(clean);
         if (!parsed.tool || !parsed.args) throw new Error('JSON incompleto');
         if (!parsed.args.empresa_id) parsed.args.empresa_id = empresa_id;
         return parsed;
-    } catch {
-        console.warn('[Bridge] No se pudo parsear JSON de Gemini, usando fallback.');
+
+    } catch (e) {
+        console.warn(`[Bridge] Error parseando JSON o modelo ambiguo. Fallback -> simulateFinancialScenario`, e);
         return {
             tool: 'simulateFinancialScenario',
-            args: { empresa_id, description: prompt }
+            args: {empresa_id, description: prompt}
         };
     }
 }
 
+function getPromptForTool(toolName: string, payload: any): string {
+
+    // 1. LA PERSONA BASE (El Asesor Crítico y Conciso)
+    const basePersona = `Eres 'CFO-Virtual', el asesor financiero de confianza del dueño de un negocio.
+    Tu usuario NO sabe de finanzas y tiene POCO TIEMPO.
+
+Tu tono debe ser:
+- **Brutalmente Breve:** MÁXIMO 4 o 5 LÍNEAS. Ve al grano inmediatamente.
+- **Crítico y Analítico:** Usa el SENTIDO COMÚN.
+- **Directo y Sencillo:** Como si se lo explicaras a un amigo.
+
+**REGLA DE ORO:** NUNCA uses tecnicismos.
+- NO digas "runway", di "meses de reserva".
+- NO digas "burn rate", di "gasto mensual".
+- NO digas "perfil de riesgo", di "tu estilo" (ej. "como te gusta ir a lo seguro...").
+
+**PROHIBIDO:** No uses "Hola", "Claro", "Aquí tienes", markdown, o cualquier saludo.
+Responde solo con el texto para el usuario.`;
+
+    // 2. EL CONTEXTO (Lo que calculó el MCP)
+    const jsonContext = `Contexto JSON:\n${JSON.stringify(payload, null, 2)}`;
+
+    // 3. PROMPTS ESPECÍFICOS POR HERRAMIENTA
+    switch (toolName) {
+
+        // --- FUNCIÓN 2: El "Risk-Grader" (Crítico y Breve) ---
+        case 'simulateFinancialScenario':
+            return `
+${basePersona}
+
+${jsonContext}
+
+**Tarea:** Escribe la "Calificación de Riesgo" en MÁXIMO 5 LÍNEAS.
+1.  // <-- PENSAMIENTO CRÍTICO
+    ¿La petición ('simulationDescription') y el costo son LÓGICOS?
+    - Si es ILÓGICA (ej. "conserje por 100k"), CUESTIÓNALA primero.
+2.  Si es lógica, da el veredicto: 'riskLevel' y 'score' (ej. "Riesgo Alto (3/10)").
+3.  Explica por qué, diciendo los "meses de reserva" ('runwayMonths') que quedarían.
+4.  Da un consejo basado en su estilo ('companyContext.riskProfile').
+
+(Ej 1 - Ilógico: "¿Seguro de ese monto? Pagar $100,000 por un conserje parece un error. Si es correcto, el riesgo es Crítico (1/10) y te dejaría con 1 mes de reserva.")
+
+(Ej 2 - Lógico: "Calificación: Riesgo Alto (3/10) para 'Contratar dos diseñadores'. Te dejaría con solo 2.5 meses de reserva. Como a ti te gusta ir a lo seguro, yo no lo haría.")`;
+
+        // --- FUNCIÓN 3: El "Analista" (Resumen Breve) ---
+        case 'getFinancialSummary':
+            return `
+${basePersona}
+
+${jsonContext}
+
+**Tarea:** Responde la pregunta del usuario sobre sus finanzas en MÁXIMO 5 LÍNEAS.
+1.  Da el total ('totalAmount') y de qué ('queryParameters').
+2.  // <-- CONSEJO HUMANO
+    Haz una pregunta simple que genere reflexión, usando el contexto del negocio ('companyState.description').
+
+(Ejemplo ideal si description="Consultora de software": "Gastaste $45,000 en 'Marketing' el mes pasado. Siendo una consultora, ¿sientes que esa inversión te trajo suficientes clientes nuevos?")`;
+
+        // --- FUNCIÓN 3: El "Analista" (Chequeo Breve) ---
+        case 'getFinancialHealthCheck':
+            return `
+${basePersona}
+
+${jsonContext}
+
+**Tarea:** Escribe un "chequeo de salud" en MÁXIMO 5 LÍNEAS.
+1.  // <-- CONSEJO HUMANO
+    Empieza con el veredicto claro (ej. 'Tu salud financiera está en riesgo').
+2.  Explica por qué usando los 'keyInsights'.
+3.  Di cuál es el problema MÁS URGENTE.
+
+(Ejemplo ideal: "Tu salud financiera está en riesgo. Tienes 4 meses de reserva, pero tu colchón de seguridad debería ser de 6. El problema urgente es que tus gastos de 'Operaciones' están disparados este mes. Revísalos hoy.")`;
+
+        // --- FUNCIÓN 1: El "Centinela" (Alerta Breve) ---
+        case 'checkForFinancialAlerts':
+            return `
+${basePersona}
+
+${jsonContext}
+
+**Tarea:** Actúa como una alarma URGENTE. MÁXIMO 5 LÍNEAS.
+1.  Si el JSON está vacío o dice "No se encontraron...", responde que todo está en orden.
+2.  // <-- CONSEJO HUMANO
+    Si hay alertas, di la 'message' de la más grave. Que se entienda el peligro.
+
+(Ejemplo ideal: "¡ALERTA URGENTE! Si sigues gastando a este ritmo, te quedas sin dinero en 12 días. Te pasaste mucho del presupuesto en 'Marketing'.")`;
+
+        default:
+            // Fallback genérico (que queremos evitar)
+            return `
+${basePersona}
+
+${jsonContext}
+
+**Tarea:** Explica este JSON al usuario de la forma más simple y BREVE posible. Máximo 5 líneas.`;
+    }
+}
 
 app.post('/ask-cfo', async (req, res) => {
     try {
-        const { prompt, empresa_id } = req.body;
+        const {prompt, empresa_id} = req.body;
         if (!prompt || !empresa_id) {
-            return res.status(400).json({ error: 'Faltan "prompt" o "empresa_id".' });
+            return res.status(400).json({error: 'Faltan "prompt" o "empresa_id".'});
         }
 
         console.log(`[Bridge] Solicitando selección de herramienta para prompt: "${prompt}"`);
 
-        const { tool, args } = await selectToolWithGemini(prompt, empresa_id);
+        const {tool, args} = await selectToolWithGemini(prompt, empresa_id);
         console.log(`[Bridge] Gemini seleccionó: ${tool}`);
 
         const payload = await callMcpToolTextJson(tool, args);
 
-        const model = gemini.getGenerativeModel({ model: 'gemini-2.5-flash' });
+        const systemPrompt = getPromptForTool(tool, payload);
+        // ---------------------------------
+
+        const model = gemini.getGenerativeModel({model: 'gemini-2.5-flash'});
         const gen = await model.generateContent([
             {
-                text: `Contexto JSON:\n${JSON.stringify(payload)}\n\nRedacta una respuesta breve y clara para el usuario.`
+                text: systemPrompt // <-- ¡Usamos el prompt dinámico!
             }
         ]);
 
         const textResponse = gen.response?.text?.() || JSON.stringify(payload);
 
-        res.json({ toolUsed: tool, response: textResponse, data: payload });
+        res.json({toolUsed: tool, response: textResponse, data: payload});
 
     } catch (error: any) {
         console.error(`[Bridge] Error en /ask-cfo: ${error.message}`);
-        res.status(500).json({ error: error.message });
+        res.status(500).json({error: error.message});
     }
 });
 
