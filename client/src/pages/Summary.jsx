@@ -1,31 +1,39 @@
 import { useState } from 'react'
 import { Card, CardBody, Button, Input, Select, SelectItem, Chip, Table, TableHeader, TableColumn, TableBody, TableRow, TableCell } from '@nextui-org/react'
-import { FileText, TrendingUp, TrendingDown, Search, Download, Calendar, Filter, DollarSign } from 'lucide-react'
+import { FileText, TrendingUp, TrendingDown, Search, Download, Calendar, Filter, DollarSign, Plus } from 'lucide-react'
+import AddExpenseModal from '../components/expenses/AddExpenseModal'
 
 const Summary = () => {
   const [dateRange, setDateRange] = useState('30')
   const [category, setCategory] = useState('all')
   const [searchTerm, setSearchTerm] = useState('')
+  const [isModalOpen, setIsModalOpen] = useState(false)
 
   // Datos de ejemplo
-  const transactions = [
-    { id: 1, date: '2024-10-25', concept: 'Pago a proveedor XYZ', category: 'Gastos Operativos', amount: -15000, type: 'expense' },
-    { id: 2, date: '2024-10-24', concept: 'Venta de producto A', category: 'Ingresos', amount: 45000, type: 'income' },
-    { id: 3, date: '2024-10-23', concept: 'Nómina empleados', category: 'Recursos Humanos', amount: -85000, type: 'expense' },
-    { id: 4, date: '2024-10-22', concept: 'Servicio de consultoría', category: 'Ingresos', amount: 30000, type: 'income' },
-    { id: 5, date: '2024-10-21', concept: 'Compra de equipo', category: 'Inversión', amount: -25000, type: 'expense' },
-    { id: 6, date: '2024-10-20', concept: 'Pago de renta', category: 'Gastos Operativos', amount: -12000, type: 'expense' },
-    { id: 7, date: '2024-10-19', concept: 'Venta de servicio B', category: 'Ingresos', amount: 28000, type: 'income' },
-    { id: 8, date: '2024-10-18', concept: 'Pago de servicios', category: 'Gastos Operativos', amount: -3500, type: 'expense' },
-  ]
+  const [transactions, setTransactions] = useState([
+    { id: 1, date: '2024-10-25', concept: 'Pago a proveedor XYZ', category: 'Servicios', amount: -15000, type: 'expense' },
+    { id: 2, date: '2024-10-24', concept: 'Venta producto A', category: 'Ventas', amount: 45000, type: 'income' },
+    { id: 3, date: '2024-10-23', concept: 'Nómina operativa', category: 'Personal', amount: -85000, type: 'expense' },
+    { id: 4, date: '2024-10-22', concept: 'Venta producto B', category: 'Ventas', amount: 30000, type: 'income' },
+    { id: 5, date: '2024-10-21', concept: 'Compra de equipo', category: 'Infraestructura', amount: -25000, type: 'expense' },
+    { id: 6, date: '2024-10-20', concept: 'Materia prima', category: 'Costos', amount: -12000, type: 'expense' },
+    { id: 7, date: '2024-10-19', concept: 'Campaña digital', category: 'Marketing', amount: -8000, type: 'expense' },
+    { id: 8, date: '2024-10-18', concept: 'Servicios cloud', category: 'Servicios', amount: -3500, type: 'expense' },
+  ])
 
   const categories = [
     { value: 'all', label: 'Todas las categorías' },
-    { value: 'income', label: 'Ingresos' },
-    { value: 'expense', label: 'Gastos Operativos' },
-    { value: 'hr', label: 'Recursos Humanos' },
-    { value: 'investment', label: 'Inversión' },
+    { value: 'ventas', label: 'Ventas' },
+    { value: 'personal', label: 'Personal' },
+    { value: 'infraestructura', label: 'Infraestructura' },
+    { value: 'costos', label: 'Costos' },
+    { value: 'servicios', label: 'Servicios' },
+    { value: 'marketing', label: 'Marketing' },
   ]
+
+  const handleAddTransaction = (newTransaction) => {
+    setTransactions([newTransaction, ...transactions])
+  }
 
   const totalIncome = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0)
   const totalExpense = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + Math.abs(t.amount), 0)
@@ -34,9 +42,11 @@ const Summary = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-banorte-gray">Resumen Financiero</h1>
-        <p className="text-gray-500 mt-2">Vista detallada de transacciones y reportes</p>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-banorte-gray">Resumen Financiero</h1>
+          <p className="text-gray-500 mt-2">Vista detallada de transacciones y reportes</p>
+        </div>
       </div>
 
       {/* Summary Cards */}
@@ -146,6 +156,14 @@ const Summary = () => {
       </Card>
 
       {/* Transactions Table */}
+        <Button
+          color="primary"
+          className="bg-banorte-red"
+          startContent={<Plus size={18} />}
+          onPress={() => setIsModalOpen(true)}
+        >
+          Nueva Transacción
+        </Button>
       <Card className="border border-gray-200">
         <CardBody className="p-0">
           <Table aria-label="Tabla de transacciones" removeWrapper>
@@ -226,6 +244,13 @@ const Summary = () => {
           </CardBody>
         </Card>
       </div>
+
+      {/* Add Expense Modal */}
+      <AddExpenseModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onAdd={handleAddTransaction}
+      />
     </div>
   )
 }

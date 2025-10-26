@@ -1,10 +1,19 @@
+import { useState } from 'react'
 import { Card, CardBody, CardHeader, Button, Progress, Chip } from '@nextui-org/react'
 import { 
   FileText, Activity, AlertTriangle, BarChart3, Target, 
-  TrendingUp, TrendingDown, ArrowRight, Bot 
+  TrendingUp, TrendingDown, ArrowRight, Bot, Plus 
 } from 'lucide-react'
+import AddExpenseModal from '../components/expenses/AddExpenseModal'
 
 const Dashboard = () => {
+  const [isModalOpen, setIsModalOpen] = useState(false)
+
+  const handleAddTransaction = (newTransaction) => {
+    console.log('Nueva transacción:', newTransaction)
+    // Aquí puedes agregar la lógica para guardar la transacción
+  }
+
   return (
     <div className="space-y-4 md:space-y-6">
       {/* AI Chat Promo Banner - Mobile */}
@@ -27,15 +36,15 @@ const Dashboard = () => {
       <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-3">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold text-banorte-gray">Dashboard</h1>
-          <p className="text-sm md:text-base text-gray-500 mt-1">Centro de Comando Financiero</p>
         </div>
         <Button 
           color="primary" 
-          className="gradient-banorte text-white w-full md:w-auto"
+          className="bg-banorte-red text-white w-full md:w-auto"
           size="sm"
-          startContent={<FileText size={16} />}
+          startContent={<Plus size={16} />}
+          onPress={() => setIsModalOpen(true)}
         >
-          Generar Reporte
+          Nueva Transacción
         </Button>
       </div>
 
@@ -222,6 +231,13 @@ const Dashboard = () => {
           </CardBody>
         </Card>
       </div>
+
+      {/* Add Transaction Modal */}
+      <AddExpenseModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onAdd={handleAddTransaction}
+      />
     </div>
   )
 }
