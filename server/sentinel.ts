@@ -440,6 +440,9 @@ export async function runSentinelAnalysis(empresa_id: string): Promise<SentinelA
 export async function sendWhatsAppAlert(alert: SentinelAlert | any): Promise<boolean> {
     const phoneNumber = process.env.WHATSAPP_NUMBER || '5215512345678';
     
+    // Normalizar número: quitar el + si existe para tenerlo limpio
+    const cleanNumber = phoneNumber.replace(/^\+/, '');
+    
     // Manejar formato de alertas MCP (que tienen 'message' en lugar de 'title' y 'description')
     const title = alert.title || `Alerta: ${alert.category || 'Financiera'}`;
     const description = alert.description || alert.message || 'Alerta del sistema';
@@ -459,7 +462,7 @@ ${description}
 ${alert.recommendation ? `💡 *Recomendación:*\n${alert.recommendation}` : ''}
     `.trim();
 
-    console.log(`\n[Sentinel] 📱 Enviando alerta por WhatsApp a +${phoneNumber}`);
+    console.log(`\n[Sentinel] 📱 Enviando alerta por WhatsApp a +${cleanNumber}`);
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log(message);
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
@@ -483,10 +486,10 @@ ${alert.recommendation ? `💡 *Recomendación:*\n${alert.recommendation}` : ''}
         // Inicializar cliente de Twilio
         const client = twilio(accountSid, authToken);
 
-        // Enviar mensaje
+        // Enviar mensaje (usar cleanNumber sin el +)
         const twilioMessage = await client.messages.create({
             from: fromNumber,
-            to: `whatsapp:+${phoneNumber}`,
+            to: `whatsapp:+${cleanNumber}`,
             body: message
         });
 

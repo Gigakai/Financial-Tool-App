@@ -16,6 +16,7 @@ import {GoogleGenerativeAI} from '@google/generative-ai';
 import 'dotenv/config'; // Asegúrate de tener .env con GEMINI_API_KEY
 import { addTransaction } from './logic.js';
 import { runSentinelAnalysis, sendWhatsAppAlert } from './sentinel.js';
+import { makeVoiceCall } from './voice-alert.js';
 
 
 
@@ -653,7 +654,7 @@ app.get('/check-alerts/:empresa_id', async (req, res) => {
         
         console.log(`[Bridge] Total de alertas para ${empresa_id}: ${allAlerts.length} (${sentinelAlerts.length} del Sentinela, ${mcpAlerts.length} del MCP)`);
         
-        // Enviar alertas críticas y altas por WhatsApp (tanto de Sentinela como de MCP)
+        // Filtrar alertas urgentes
         const urgentAlerts = allAlerts.filter((a: any) => 
             a.severity === 'Crítico' || 
             a.severity === 'Alto' || 
@@ -661,10 +662,38 @@ app.get('/check-alerts/:empresa_id', async (req, res) => {
             a.type === 'BUDGET_EXCEEDED'
         );
         
+        // Separar alertas CRÍTICAS para llamada de voz
+        const criticalAlerts = allAlerts.filter((a: any) => 
+            a.severity === 'Crítico' || a.type === 'CRITICAL'
+        );
+        
         if (urgentAlerts.length > 0) {
-            console.log(`[Bridge] ${urgentAlerts.length} alertas urgentes detectadas (Crítico/Alto), enviando por WhatsApp...`);
-            for (const alert of urgentAlerts) {
-                await sendWhatsAppAlert(alert);
+            console.log(`[Bridge] ${urgentAlerts.length} alertas urgentes detectadas (Crítico/Alto)`);
+            
+            // ALERTAS CRÍTICAS: Llamada de voz + WhatsApp
+            if (criticalAlerts.length > 0) {
+                console.log(`[Bridge] 🚨 ${criticalAlerts.length} ALERTAS CRÍTICAS - Iniciando llamada de voz...`);
+                
+                // Hacer llamada de voz para la primera alerta crítica
+                const firstCritical = criticalAlerts[0];
+                await makeVoiceCall(firstCritical);
+                
+                // También enviar por WhatsApp todas las críticas
+                for (const alert of criticalAlerts) {
+                    await sendWhatsAppAlert(alert);
+                }
+            }
+            
+            // ALERTAS ALTAS: Solo WhatsApp
+            const highAlerts = urgentAlerts.filter((a: any) => 
+                a.severity === 'Alto' && a.severity !== 'Crítico'
+            );
+            
+            if (highAlerts.length > 0) {
+                console.log(`[Bridge] ⚠️ ${highAlerts.length} alertas altas - Enviando por WhatsApp...`);
+                for (const alert of highAlerts) {
+                    await sendWhatsAppAlert(alert);
+                }
             }
         }
         
@@ -693,6 +722,33 @@ app.get('/health', (req, res) => {
         message: 'CFO Virtual API is running',
         timestamp: new Date().toISOString()
     });
+});
+
+/**
+ * TwiML endpoint para Twilio Voice
+ * Responde con el XML que Twilio necesita para reproducir audio
+ */
+app.get('/twiml-voice', (req, res) => {
+    const audioUrl = req.query.audio as string;
+    
+    // TwiML básico con voz en español
+    const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Say voice="Polly.Mia" language="es-MX">
+        Hola, esta es una alerta crítica de tu asistente financiero virtual.
+    </Say>
+    <Pause length="1"/>
+    <Say voice="Polly.Mia" language="es-MX">
+        Por favor, revisa tu aplicación inmediatamente para ver los detalles y las acciones recomendadas.
+    </Say>
+    <Pause length="1"/>
+    <Say voice="Polly.Mia" language="es-MX">
+        Esta situación requiere tu atención urgente. Gracias.
+    </Say>
+</Response>`;
+
+    res.type('text/xml');
+    res.send(twiml);
 });
 
 /**

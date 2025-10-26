@@ -60,6 +60,7 @@ Thumbs.db
 # Temporary files
 tmp/
 temp/
+temp-audio/
 
 # Yarn v2/berry
 .yarn/cache/
