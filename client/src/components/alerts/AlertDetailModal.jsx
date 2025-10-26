@@ -1,7 +1,10 @@
 import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button, Divider, Chip } from '@nextui-org/react'
 import { AlertTriangle, Info, CheckCircle2, Lightbulb, TrendingDown, TrendingUp } from 'lucide-react'
+import { useChatContext } from '../../contexts/ChatContext'
 
 const AlertDetailModal = ({ isOpen, onClose, alert }) => {
+  const { openChatWithMessage } = useChatContext()
+
   if (!alert) return null
 
   const getAlertStyle = (type) => {
@@ -31,6 +34,38 @@ const AlertDetailModal = ({ isOpen, onClose, alert }) => {
           icon: Info
         }
     }
+  }
+
+  const handleChatAboutAlert = () => {
+    // Crear mensaje contextual basado en la alerta
+    let message = `Necesito ayuda con esta alerta: "${alert.title}". `
+
+    if (alert.category) {
+      message += `Es una alerta de tipo ${alert.category}. `
+    }
+
+    if (alert.description) {
+      message += `El problema es: ${alert.description} `
+    }
+
+    // Agregar información específica según metadata
+    if (alert.metadata) {
+      if (alert.metadata.daysUntilZero !== undefined) {
+        message += `Solo tengo ${alert.metadata.daysUntilZero} días hasta que mi efectivo llegue a cero. `
+      }
+      if (alert.metadata.increasePercent !== undefined) {
+        message += `He notado un incremento del ${alert.metadata.increasePercent}% en estos gastos. `
+      }
+      if (alert.metadata.declinePercent !== undefined) {
+        message += `Hay una caída del ${alert.metadata.declinePercent}% en esta área. `
+      }
+    }
+
+    message += '¿Qué recomendaciones específicas me puedes dar para resolver esta situación?'
+
+    // Cerrar el modal y abrir el chat con el mensaje
+    onClose()
+    openChatWithMessage(message)
   }
 
   const style = getAlertStyle(alert.type)
@@ -206,12 +241,9 @@ const AlertDetailModal = ({ isOpen, onClose, alert }) => {
           <Button 
             color="primary" 
             className="bg-banorte-red"
-            onPress={() => {
-              // TODO: Implementar acción específica por tipo de alerta
-              alert('Funcionalidad próximamente')
-            }}
+            onPress={handleChatAboutAlert}
           >
-            {alert.action || 'Tomar acción'}
+            💬 Consultar con IA
           </Button>
         </ModalFooter>
       </ModalContent>

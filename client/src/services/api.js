@@ -97,6 +97,30 @@ class ApiService {
   async getAlerts(empresaId) {
     return this.askCFO('¿Tengo alguna alerta importante?', empresaId)
   }
+
+  // Agregar transacción (REST API)
+  async addTransaction(transactionData) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/transactions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(transactionData),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`)
+      }
+
+      const data = await response.json()
+      return data
+    } catch (error) {
+      console.error('Error adding transaction:', error)
+      throw error
+    }
+  }
 }
 
 export default new ApiService()
