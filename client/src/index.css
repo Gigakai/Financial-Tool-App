@@ -1,123 +1,86 @@
-/* Directivas de Tailwind CSS */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Estilos base personalizados */
-@layer base {
-  body {
-    @apply font-sans antialiased;
-    margin: 0;
-    min-width: 320px;
-    min-height: 100vh;
-  }
-  
-  * {
-    box-sizing: border-box;
-  }
+:root {
+  /* Colores Banorte */
+  --banorte-red: #EB0029;
+  --banorte-gray: #58616D;
+  --banorte-white: #FFFFFF;
+  --positive: #6CCC4A;
+  --alert: #FF671B;
+  --warning: #FFA400;
 }
 
-/* Componentes personalizados */
-@layer components {
-  /* Botón primario personalizado */
-  .btn-primary {
-    @apply bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors;
-  }
-  
-  /* Tarjeta estándar */
-  .card {
-    @apply bg-white rounded-xl shadow-lg p-6;
-  }
-  
-  /* Input estándar */
-  .input-standard {
-    @apply w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent;
-  }
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #f5f5f5;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
 }
 
 /* Utilidades personalizadas */
-@layer utilities {
-  /* Animación de entrada suave */
-  .animate-fade-in {
-    animation: fadeIn 0.5s ease-out;
-  }
-  
-  /* Animación de pulso lenta */
-  .animate-pulse-slow {
-    animation: pulse 2s ease-in-out infinite;
-  }
-  
-  /* Sombra de tarjeta */
-  .shadow-card {
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  }
-  
-  .shadow-card-hover {
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-  }
-  
-  /* Transición suave */
-  .transition-smooth {
-    transition: all 0.3s ease-in-out;
+.gradient-banorte {
+  background: linear-gradient(135deg, var(--banorte-red) 0%, #C30020 100%);
+}
+
+.text-gradient {
+  background: linear-gradient(135deg, var(--banorte-red) 0%, #C30020 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.shadow-banorte {
+  box-shadow: 0 4px 14px rgba(235, 0, 41, 0.15);
+}
+
+.card-hover {
+  transition: all 0.3s ease;
+}
+
+@media (min-width: 768px) {
+  .card-hover:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.1);
   }
 }
 
-/* Animaciones personalizadas */
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+/* Mobile safe area for devices with notches */
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
-@keyframes pulse {
+/* Smooth scroll for chat */
+.scroll-smooth {
+  scroll-behavior: smooth;
+}
+
+/* Floating action button pulse animation */
+@keyframes pulse-soft {
   0%, 100% {
-    opacity: 1;
+    box-shadow: 0 4px 14px rgba(235, 0, 41, 0.4);
   }
   50% {
-    opacity: 0.5;
+    box-shadow: 0 4px 20px rgba(235, 0, 41, 0.6);
   }
 }
 
-/* Scrollbar personalizado para navegadores WebKit */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: #f1f5f9;
-  border-radius: 10px;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 10px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
-}
-
-/* Estilos para Firefox */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: #cbd5e1 #f1f5f9;
-}
-
-/* Mejoras de accesibilidad */
-.focus-visible:focus {
-  outline: 2px solid #6366f1;
-  outline-offset: 2px;
-}
-
-/* Responsive typography */
-@media (max-width: 640px) {
-  .text-responsive {
-    font-size: 0.875rem;
-  }
+.animate-pulse-soft {
+  animation: pulse-soft 2s ease-in-out infinite;
 }

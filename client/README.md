@@ -1,16 +1,78 @@
-# React + Vite
+# CFO Virtual - Client
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Frontend para el sistema CFO Virtual desarrollado con React, NextUI y Tailwind CSS.
 
-Currently, two official plugins are available:
+**Servidor corriendo en:** http://localhost:3000/
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## **Diseño Mobile-First**
+- Optimizado para dispositivos móviles primero
+- Bottom navigation en móvil
+- Chat de IA como elemento principal
+- Diseño responsivo que se adapta a todas las pantallas
 
-## React Compiler
+## 🎨 Colores Banorte
 
-The React Compiler is currently not compatible with SWC. See [this issue](https://github.com/vitejs/vite-plugin-react/issues/428) for tracking the progress.
+- **Rojo Banorte**: `#EB0029`
+- **Gris Banorte**: `#58616D`
+- **Blanco**: `#FFFFFF`
+- **Positivo (Verde)**: `#6CCC4A`
+- **Alerta (Naranja)**: `#FF671B`
+- **Aviso (Amarillo)**: `#FFA400`
 
-## Expanding the ESLint configuration
+## 📁 Estructura del Proyecto
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+```
+src/
+├── components/
+│   └── layout/          # Componentes de layout (Sidebar, Header)
+├── layouts/             # Layout principal
+├── pages/               # Páginas de la aplicación
+│   ├── Dashboard.jsx    # Vista principal unificada
+│   ├── Summary.jsx      # Reportes financieros
+│   ├── Simulator.jsx    # Simulador de escenarios
+│   ├── HealthCheck.jsx  # Análisis de salud
+│   └── Alerts.jsx       # Centro de alertas
+├── services/            # Servicios de API
+└── utils/               # Utilidades y constantes
+```
+
+## 🚀 Instalación y Ejecución
+
+```bash
+# Instalar dependencias
+npm install
+
+# Ejecutar en modo desarrollo
+npm run dev
+
+# Build para producción
+npm run build
+
+# Preview de producción
+npm run preview
+```
+
+## 🛠️ Tecnologías
+
+- **React 18** - Framework principal
+- **NextUI** - Librería de componentes UI
+- **Tailwind CSS** - Estilos
+- **React Router DOM** - Navegación
+- **Vite** - Build tool
+- **Framer Motion** - Animaciones
+
+## 📦 Componentes Principales
+
+- **Dashboard**: Vista unificada con 4 cards principales
+- **Sidebar**: Navegación lateral con iconos
+- **Header**: Barra superior con selector de empresa
+- **Layout**: Estructura base con sidebar y header
+
+## 🎯 Características
+
+- Diseño responsive
+- Colores corporativos Banorte
+- Navegación intuitiva
+- Cards interactivos con hover effects
+- Sistema de alertas visual
+- Integración con API backend
