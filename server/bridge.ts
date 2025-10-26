@@ -15,6 +15,7 @@ import {GoogleGenerativeAI} from '@google/generative-ai';
 
 import 'dotenv/config'; // Asegúrate de tener .env con GEMINI_API_KEY
 import { addTransaction } from './logic.js';
+import { runSentinelAnalysis, sendWhatsAppAlert } from './sentinel.js';
 
 
 
@@ -632,20 +633,44 @@ app.post('/ask-cfo', async (req, res) => {
 
 
 /**
-
-
-
- * Endpoint para el "Centinela" (Proactivo).
- * El frontend llamará a este endpoint cada 30 segundos.
- * Llama directamente a la herramienta MCP sin pasar por Gemini.
+ * Endpoint para el "Centinela" (Proactivo) - MEJORADO CON SENTINEL
+ * El frontend llamará a este endpoint periódicamente.
+ * Ejecuta análisis avanzado de anomalías, tendencias y proyecciones.
  */
 app.get('/check-alerts/:empresa_id', async (req, res) => {
     try {
         const {empresa_id} = req.params as { empresa_id: string };
-        const result = await callMcpToolTextJson('checkForFinancialAlerts', {empresa_id});
-        const alerts = Array.isArray(result) ? result : [];
-        console.log(`[Bridge] Alertas encontradas para ${empresa_id}: ${alerts.length}`);
-        res.json({alerts});
+        
+        // Ejecutar análisis del Sentinela
+        const sentinelAlerts = await runSentinelAnalysis(empresa_id);
+        
+        // También obtener alertas básicas del MCP
+        const mcpResult = await callMcpToolTextJson('checkForFinancialAlerts', {empresa_id});
+        const mcpAlerts = Array.isArray(mcpResult) ? mcpResult : [];
+        
+        // Combinar alertas
+        const allAlerts = [...sentinelAlerts, ...mcpAlerts];
+        
+        console.log(`[Bridge] Total de alertas para ${empresa_id}: ${allAlerts.length} (${sentinelAlerts.length} del Sentinela, ${mcpAlerts.length} del MCP)`);
+        
+        // Enviar alertas críticas por WhatsApp
+        const criticalAlerts = sentinelAlerts.filter(a => a.severity === 'Crítico');
+        if (criticalAlerts.length > 0) {
+            console.log(`[Bridge] ${criticalAlerts.length} alertas críticas detectadas, enviando por WhatsApp...`);
+            for (const alert of criticalAlerts) {
+                await sendWhatsAppAlert(alert);
+            }
+        }
+        
+        res.json({
+            alerts: allAlerts,
+            summary: {
+                total: allAlerts.length,
+                critical: allAlerts.filter((a: any) => a.severity === 'Crítico' || a.type === 'CRITICAL').length,
+                high: allAlerts.filter((a: any) => a.severity === 'Alto' || a.severity === 'BUDGET_EXCEEDED').length,
+                medium: allAlerts.filter((a: any) => a.severity === 'Medio' || a.severity === 'PACING_WARNING').length
+            }
+        });
     } catch (error: any) {
         console.error(`[Bridge] Error en /check-alerts: ${error.message}`);
         res.status(500).json({error: error.message});

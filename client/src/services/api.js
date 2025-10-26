@@ -30,7 +30,7 @@ class ApiService {
     }
   }
 
-  // Verificar alertas proactivamente
+  // Verificar alertas proactivamente (Sentinela mejorado)
   async checkAlerts(empresaId = API_CONFIG.DEFAULT_EMPRESA_ID) {
     try {
       const response = await fetch(`${API_BASE_URL}/check-alerts/${empresaId}`)
@@ -40,9 +40,32 @@ class ApiService {
       }
 
       const data = await response.json()
-      return data
+      return data // Retorna { alerts: [], summary: { total, critical, high, medium } }
     } catch (error) {
       console.error('Error checking alerts:', error)
+      throw error
+    }
+  }
+
+  // Agregar transacción
+  async addTransaction(transactionData) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/transactions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(transactionData)
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const data = await response.json()
+      return data
+    } catch (error) {
+      console.error('Error adding transaction:', error)
       throw error
     }
   }

@@ -1,99 +1,96 @@
-import { useState } from 'react'
-import { Card, CardBody, CardHeader, Badge, Button, Chip, Tabs, Tab, Divider, Avatar } from '@nextui-org/react'
-import { AlertTriangle, CheckCircle2, Info, TrendingDown, TrendingUp, Clock, DollarSign, Target, Bell, BellOff, Archive, Trash2, Filter, Calendar } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Card, CardBody, CardHeader, Badge, Button, Chip, Tabs, Tab, Divider, Avatar, Spinner } from '@nextui-org/react'
+import { AlertTriangle, CheckCircle2, Info, TrendingDown, TrendingUp, Clock, DollarSign, Target, Bell, BellOff, Archive, Trash2, Filter, Calendar, RefreshCw } from 'lucide-react'
+import apiService from '../services/api'
+import { API_CONFIG } from '../utils/constants'
+import AlertDetailModal from '../components/alerts/AlertDetailModal'
 
 const Alerts = () => {
   const [filter, setFilter] = useState('all')
-  const [alerts, setAlerts] = useState([
-    {
-      id: 1,
-      type: 'critical',
-      title: 'Runway crítico: 8 meses restantes',
-      description: 'Tu empresa tiene solo 8 meses de operación con el capital actual. Se recomienda reducir gastos o buscar financiamiento.',
-      timestamp: '2024-10-26T10:30:00',
-      read: false,
-      category: 'runway',
-      icon: AlertTriangle,
-      action: 'Ver análisis detallado'
-    },
-    {
-      id: 2,
-      type: 'warning',
-      title: 'Gasto inusual detectado',
-      description: 'Se registró un gasto de $45,000 en "Servicios Externos", 250% por encima del promedio mensual.',
-      timestamp: '2024-10-26T09:15:00',
-      read: false,
-      category: 'expenses',
-      icon: TrendingDown,
-      action: 'Revisar transacción'
-    },
-    {
-      id: 3,
-      type: 'success',
-      title: 'Meta de ingresos alcanzada',
-      description: 'Felicidades, has superado tu meta mensual de ingresos en un 15%.',
-      timestamp: '2024-10-25T18:45:00',
-      read: true,
-      category: 'revenue',
-      icon: TrendingUp,
-      action: 'Ver detalles'
-    },
-    {
-      id: 4,
-      type: 'info',
-      title: 'Próximo pago de nómina',
-      description: 'Recordatorio: El pago de nómina de $85,000 está programado para el 30 de octubre.',
-      timestamp: '2024-10-25T14:00:00',
-      read: true,
-      category: 'payments',
-      icon: Calendar,
-      action: 'Confirmar pago'
-    },
-    {
-      id: 5,
-      type: 'warning',
-      title: 'Flujo de caja bajo',
-      description: 'Tu balance disponible es de $32,000, por debajo del mínimo recomendado de $50,000.',
-      timestamp: '2024-10-24T11:20:00',
-      read: false,
-      category: 'cashflow',
-      icon: DollarSign,
-      action: 'Ver recomendaciones'
-    },
-    {
-      id: 6,
-      type: 'critical',
-      title: 'Factura vencida',
-      description: 'La factura #F-2024-0234 de $12,500 está vencida hace 15 días. Cliente: Tech Solutions SA.',
-      timestamp: '2024-10-24T08:30:00',
-      read: false,
-      category: 'invoices',
-      icon: Clock,
-      action: 'Gestionar cobro'
-    },
-    {
-      id: 7,
-      type: 'info',
-      title: 'Nuevo cliente registrado',
-      description: 'Se ha agregado un nuevo cliente a tu cartera: Innovation Corp. Ingresos estimados: $25,000/mes.',
-      timestamp: '2024-10-23T16:00:00',
-      read: true,
-      category: 'clients',
-      icon: Target,
-      action: 'Ver perfil'
-    },
-    {
-      id: 8,
-      type: 'success',
-      title: 'Reducción de gastos exitosa',
-      description: 'Has reducido los gastos operativos en un 12% comparado con el mes anterior.',
-      timestamp: '2024-10-23T10:00:00',
-      read: true,
-      category: 'expenses',
-      icon: CheckCircle2,
-      action: 'Ver informe'
+  const [alerts, setAlerts] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [lastUpdate, setLastUpdate] = useState(null)
+  const [selectedAlert, setSelectedAlert] = useState(null)
+  const [isModalOpen, setIsModalOpen] = useState(false)
+
+  // Fetch alerts from Sentinela
+  const fetchAlerts = async (showRefreshing = false) => {
+    try {
+      if (showRefreshing) setRefreshing(true)
+      else setLoading(true)
+
+      const response = await apiService.checkAlerts(API_CONFIG.DEFAULT_EMPRESA_ID)
+      
+      // Transformar alertas del backend al formato del frontend
+      const transformedAlerts = response.alerts.map((alert, index) => {
+        // Determinar el tipo basado en la severidad o el tipo del backend
+        let type = 'info'
+        if (alert.severity === 'Crítico' || alert.type === 'CRITICAL' || alert.type === 'CASHFLOW_WARNING') {
+          type = 'critical'
+        } else if (alert.severity === 'Alto' || alert.type === 'WARNING' || alert.type === 'BUDGET_EXCEEDED') {
+          type = 'warning'
+        } else if (alert.severity === 'Medio' || alert.type === 'PACING_WARNING') {
+          type = 'warning'
+        }
+
+        // Determinar la categoría
+        let category = 'general'
+        let icon = Info
+        if (alert.category === 'cashflow' || alert.category?.includes('cashflow')) {
+          category = 'cashflow'
+          icon = DollarSign
+        } else if (alert.category === 'expense-anomaly' || alert.category === 'duplicate-expense') {
+          category = 'expenses'
+          icon = TrendingDown
+        } else if (alert.category === 'budget-overrun' || alert.type === 'BUDGET_EXCEEDED' || alert.type === 'PACING_WARNING') {
+          category = 'budget'
+          icon = Target
+        } else if (alert.category === 'trend') {
+          category = 'trend'
+          icon = TrendingDown
+        }
+
+        return {
+          id: alert.id || `alert-${index}-${Date.now()}`,
+          type,
+          title: alert.title || alert.message || 'Alerta del sistema',
+          description: alert.description || alert.message || '',
+          timestamp: alert.timestamp || new Date().toISOString(),
+          read: false,
+          category,
+          icon,
+          action: alert.actionable ? (alert.recommendation ? 'Ver recomendación' : 'Ver detalles') : 'Revisar',
+          recommendation: alert.recommendation,
+          metadata: alert.metadata
+        }
+      })
+
+      setAlerts(transformedAlerts)
+      setLastUpdate(new Date())
+    } catch (error) {
+      console.error('Error fetching alerts:', error)
+    } finally {
+      setLoading(false)
+      setRefreshing(false)
     }
-  ])
+  }
+
+  // Cargar alertas al montar el componente
+  useEffect(() => {
+    fetchAlerts()
+
+    // Auto-refresh cada 60 segundos
+    const interval = setInterval(() => {
+      fetchAlerts(true)
+    }, 60000)
+
+    return () => clearInterval(interval)
+  }, [])
+
+  const handleRefresh = () => {
+    fetchAlerts(true)
+  }
 
   const getAlertStyle = (type) => {
     switch (type) {
@@ -148,7 +145,10 @@ const Alerts = () => {
       payments: 'Pagos',
       cashflow: 'Flujo de Caja',
       invoices: 'Facturas',
-      clients: 'Clientes'
+      clients: 'Clientes',
+      budget: 'Presupuesto',
+      trend: 'Tendencia',
+      general: 'General'
     }
     return labels[category] || category
   }
@@ -174,6 +174,16 @@ const Alerts = () => {
     setAlerts(alerts.filter(alert => alert.id !== id))
   }
 
+  const openAlertDetail = (alert) => {
+    setSelectedAlert(alert)
+    setIsModalOpen(true)
+  }
+
+  const closeAlertDetail = () => {
+    setIsModalOpen(false)
+    setSelectedAlert(null)
+  }
+
   const filteredAlerts = alerts.filter(alert => {
     if (filter === 'all') return true
     if (filter === 'unread') return !alert.read
@@ -192,10 +202,26 @@ const Alerts = () => {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-banorte-gray">Centro de Alertas</h1>
-          <p className="text-gray-500 mt-2">Notificaciones y alertas financieras importantes</p>
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-bold text-banorte-gray">Centro de Alertas</h1>
+            {lastUpdate && (
+              <Chip size="sm" variant="flat" color="primary">
+                Actualizado {lastUpdate.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
+              </Chip>
+            )}
+          </div>
+          <p className="text-gray-500 mt-2">Sistema Sentinela - Monitoreo inteligente de tu salud financiera</p>
         </div>
         <div className="flex gap-2">
+          <Button
+            variant="bordered"
+            startContent={refreshing ? <Spinner size="sm" /> : <RefreshCw size={18} />}
+            size="sm"
+            onPress={handleRefresh}
+            isDisabled={refreshing}
+          >
+            {refreshing ? 'Actualizando...' : 'Actualizar'}
+          </Button>
           <Button
             variant="bordered"
             startContent={<Archive size={18} />}
@@ -203,18 +229,20 @@ const Alerts = () => {
           >
             Archivar leídas
           </Button>
-          <Button
-            variant="bordered"
-            startContent={<BellOff size={18} />}
-            size="sm"
-          >
-            Silenciar
-          </Button>
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      {loading && alerts.length === 0 ? (
+        <Card className="border border-gray-200">
+          <CardBody className="p-12 text-center">
+            <Spinner size="lg" />
+            <p className="mt-4 text-gray-500">Analizando tu salud financiera...</p>
+          </CardBody>
+        </Card>
+      ) : (
+        <>
+          {/* Stats Cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card className="border border-gray-200">
           <CardBody className="p-4 text-center">
             <div className="flex items-center justify-center gap-2 mb-2">
@@ -402,6 +430,7 @@ const Alerts = () => {
                             color="primary"
                             variant="flat"
                             className="bg-banorte-red/10 text-banorte-red"
+                            onPress={() => openAlertDetail(alert)}
                           >
                             {alert.action}
                           </Button>
@@ -442,6 +471,15 @@ const Alerts = () => {
           </Button>
         </div>
       )}
+        </>
+      )}
+
+      {/* Modal de detalles */}
+      <AlertDetailModal 
+        isOpen={isModalOpen}
+        onClose={closeAlertDetail}
+        alert={selectedAlert}
+      />
     </div>
   )
 }
