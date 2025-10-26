@@ -2,7 +2,7 @@ import {McpServer} from "@modelcontextprotocol/sdk/server/mcp.js";
 import {StdioServerTransport} from "@modelcontextprotocol/sdk/server/stdio.js";
 import {z} from "zod";
 import {calculateRisk, getSummary, calculateHealthReport, checkForFinancialAlerts} from "./logic.js";
-import fs from 'fs';
+import * as fs from 'node:fs';
 // Creación del servidor MCP
 const server = new McpServer({
     name: 'CFO-Virtual',
@@ -12,12 +12,11 @@ const server = new McpServer({
 // Herramienta principal: Risk-Grader
 server.tool(
     'simulateFinancialScenario',
-    'Ejecuta una simulación "What-If" para una empresa específica y devuelve una calificación de riesgo en formato JSON.',
-    {
+    'Calcula el riesgo de un escenario "What-If" (ej. una nueva compra o contratación). Devuelve un score de riesgo y un análisis. ¡USA ESTA HERRAMIENTA para cualquier pregunta sobre "puedo comprar", "puedo contratar", "qué pasa si gasto", o simulaciones de costos!', {
         empresa_id: z.string().describe('El ID único de la empresa. Ej: "E001"'),
-        description: z.string().describe('Descripción del escenario a simular. Ej: "Contratar un nuevo desarrollador"'),
-        recurringCost: z.number().optional().default(0).describe('El nuevo costo mensual recurrente. Ej: 50000'),
-        oneTimeCost: z.number().optional().default(0).describe('El costo único inicial. Ej: 25000 para equipo'),
+        description: z.string().describe('Descripción del escenario que el usuario quiere simular. Ej: "Contratar un nuevo desarrollador" o "Comprar nueva maquinaria"'),
+        recurringCost: z.number().optional().default(0).describe('El nuevo costo mensual recurrente de la simulación. Ej: 50000'),
+        oneTimeCost: z.number().optional().default(0).describe('El costo único inicial de la simulación. Ej: 25000'),
     },
     async (params) => {
         try {
@@ -81,11 +80,10 @@ server.tool(
 // Herramienta de resumen financiero (Analista)
 server.tool(
     'getFinancialSummary',
-    'Obtiene un resumen financiero (ingresos o gastos) de un periodo específico para una empresa, filtrando por tipo, categoría y tiempo.',
-    {
+    'Obtiene un resumen de transacciones (ingresos o gastos) para un periodo. ¡USA ESTA HERRAMIENTA para preguntas sobre "cuánto gasté", "en qué gasté más", "cuáles fueron mis ingresos", o "dame un resumen de marketing"!', {
         empresa_id: z.string().describe("El ID único de la empresa. Ej: 'E001'"),
         tipo: z.enum(['ingreso', 'gasto']).describe("El tipo de transacción a resumir, 'ingreso' o 'gasto'"),
-        timePeriod: z.string().optional().default('last_30_days').describe("Rango relativo (ej: 'current_month', 'last_30_days'). Se ignora si se provee 'startDate' o 'endDate'."),
+        timePeriod: z.string().optional().default('current_month').describe("Rango relativo (ej: 'current_month', 'last_30_days', 'last_90_days'). Se ignora si se provee 'startDate' o 'endDate'."),
         startDate: z.string().optional().describe("Fecha de inicio exacta del rango. Formato: 'MM/DD/YYYY'. Tiene prioridad sobre 'timePeriod'."),
         endDate: z.string().optional().describe("Fecha de fin exacta del rango. Formato: 'MM/DD/YYYY'. Tiene prioridad sobre 'timePeriod'."),
         categoria: z.string().optional().describe("Filtrar por una categoría específica. Ej: 'Marketing', 'Personal', 'Operaciones'"),
@@ -174,7 +172,7 @@ server.tool(
                 content: [
                     {
                         type: 'text',
-                        text: JSON.stringify({ error: true, message: error.message }, null, 2)
+                        text: JSON.stringify({error: true, message: error.message}, null, 2)
                     }
                 ]
             }
@@ -183,8 +181,7 @@ server.tool(
 )
 server.tool(
     'checkForFinancialAlerts',
-    'Revisa los datos financieros en busca de riesgos proactivos, como exceder presupuestos.',
-    {
+    'Revisa proactivamente si hay alertas financieras, como sobregiro de presupuesto o riesgo de flujo de caja. Esta herramienta es para el sistema, no para preguntas directas del usuario.', {
         empresa_id: z.string().describe('El ID único de la empresa a revisar. Ej: "E001"'),
     },
     async (params) => {
@@ -195,17 +192,19 @@ server.tool(
         if (alerts.length > 0) {
             // Si hay alertas, devuélvelas como un JSON para que el LLM las procese
             return {
-                content: [{ type: 'text', text: JSON.stringify(alerts, null, 2) }]
+                content: [{type: 'text', text: JSON.stringify(alerts, null, 2)}]
             };
         }
 
         // Si no hay alertas, devuelve un mensaje simple
         return {
-            content: [{ type: 'text', text: "No se encontraron alertas financieras." }]
+            content: [{type: 'text', text: "No se encontraron alertas financieras."}]
         };
     }
 )
 // Escuchar las conexiones entrantes
 console.log("Servidor CFO Virtual listo. Esperando conexiones...");
-const transport = new StdioServerTransport();
-await server.connect(transport);
+(async () => {
+    const transport = new StdioServerTransport();
+    await server.connect(transport);
+})();
