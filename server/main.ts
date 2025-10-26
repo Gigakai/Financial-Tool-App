@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { calculateRisk } from "./logic.js";
+import { calculateRisk, checkForFinancialAlerts } from "./logic.js";
 import fs from 'fs';
 // Creación del servidor MCP
 const server = new McpServer({
@@ -77,7 +77,30 @@ server.tool(
         }
     }
 )
+server.tool(
+    'checkForFinancialAlerts',
+    'Revisa los datos financieros en busca de riesgos proactivos, como exceder presupuestos.',
+    {
+        empresa_id: z.string().describe('El ID único de la empresa a revisar. Ej: "E001"'),
+    },
+    async (params) => {
+        // 3. Llama a la función de lógica que creaste
+        const alerts = await checkForFinancialAlerts(params.empresa_id);
 
+        // 4. Devuelve el resultado
+        if (alerts.length > 0) {
+            // Si hay alertas, devuélvelas como un JSON para que el LLM las procese
+            return {
+                content: [{ type: 'text', text: JSON.stringify(alerts, null, 2) }]
+            };
+        }
+
+        // Si no hay alertas, devuelve un mensaje simple
+        return {
+            content: [{ type: 'text', text: "No se encontraron alertas financieras." }]
+        };
+    }
+)
 // Escuchar las conexiones entrantes
 console.log("Servidor CFO Virtual listo. Esperando conexiones...");
 const transport = new StdioServerTransport();
