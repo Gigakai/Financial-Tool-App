@@ -1,6 +1,8 @@
 import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button, Input, Select, SelectItem, RadioGroup, Radio } from '@nextui-org/react'
 import { useState } from 'react'
-import { DollarSign, Calendar, FileText, Tag, TrendingUp, TrendingDown } from 'lucide-react'
+import { Calendar, FileText, Tag, TrendingUp, TrendingDown } from 'lucide-react'
+import ApiService from '../../services/api'
+import { API_CONFIG } from '../../utils/constants'
 
 const AddExpenseModal = ({ isOpen, onClose, onAdd }) => {
   const [formData, setFormData] = useState({
@@ -10,6 +12,8 @@ const AddExpenseModal = ({ isOpen, onClose, onAdd }) => {
     category: '',
     amount: ''
   })
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState(null)
 
   const ingresoCategories = [
     { value: 'ventas', label: 'Ventas' }
@@ -25,35 +29,67 @@ const AddExpenseModal = ({ isOpen, onClose, onAdd }) => {
 
   const categories = formData.type === 'ingreso' ? ingresoCategories : gastoCategories
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!formData.concept || !formData.category || !formData.amount) {
-      alert('Por favor completa todos los campos')
+      setError('Por favor completa todos los campos')
       return
     }
 
-    const newTransaction = {
-      id: Date.now(),
-      date: formData.date,
-      concept: formData.concept,
-      category: categories.find(c => c.value === formData.category)?.label || formData.category,
-      amount: formData.type === 'ingreso' 
-        ? Math.abs(Number(formData.amount)) 
-        : -Math.abs(Number(formData.amount)),
-      type: formData.type === 'ingreso' ? 'income' : 'expense'
-    }
+    setIsLoading(true)
+    setError(null)
 
-    onAdd(newTransaction)
-    
-    // Reset form
-    setFormData({
-      date: new Date().toISOString().split('T')[0],
-      type: 'gasto',
-      concept: '',
-      category: '',
-      amount: ''
-    })
-    
-    onClose()
+    try {
+      // Convertir la fecha al formato que espera el backend (MM/DD/YYYY)
+      const [year, month, day] = formData.date.split('-')
+      const formattedDate = `${month}/${day}/${year}`
+
+      // Preparar datos para la API
+      const transactionData = {
+        empresa_id: API_CONFIG.DEFAULT_EMPRESA_ID,
+        fecha: formattedDate,
+        tipo: formData.type, // 'ingreso' o 'gasto'
+        concepto: formData.concept,
+        categoria: formData.category,
+        monto: formData.type === 'ingreso'
+          ? Math.abs(Number(formData.amount))
+          : Math.abs(Number(formData.amount))
+      }
+
+      // Llamar a la API
+      const result = await ApiService.addTransaction(transactionData)
+
+      if (result.success) {
+        // Crear objeto para la UI local
+        const newTransaction = {
+          id: Date.now(),
+          date: formData.date,
+          concept: formData.concept,
+          category: categories.find(c => c.value === formData.category)?.label || formData.category,
+          amount: transactionData.monto,
+          type: formData.type === 'ingreso' ? 'income' : 'expense'
+        }
+
+        onAdd(newTransaction)
+
+        // Reset form
+        setFormData({
+          date: new Date().toISOString().split('T')[0],
+          type: 'gasto',
+          concept: '',
+          category: '',
+          amount: ''
+        })
+
+        onClose()
+      } else {
+        setError(result.message || 'Error al agregar la transacción')
+      }
+    } catch (err) {
+      console.error('Error al agregar transacción:', err)
+      setError(err.message || 'Error de conexión con el servidor')
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -88,6 +124,13 @@ const AddExpenseModal = ({ isOpen, onClose, onAdd }) => {
               </div>
             </ModalHeader>
             <ModalBody className="gap-4">
+              {/* Mensaje de Error */}
+              {error && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-sm text-red-600">{error}</p>
+                </div>
+              )}
+
               {/* Tipo de Transacción */}
               <RadioGroup
                 label="Tipo de transacción"
@@ -172,6 +215,7 @@ const AddExpenseModal = ({ isOpen, onClose, onAdd }) => {
               <Button 
                 variant="light" 
                 onPress={onClose}
+                isDisabled={isLoading}
               >
                 Cancelar
               </Button>
@@ -179,15 +223,10 @@ const AddExpenseModal = ({ isOpen, onClose, onAdd }) => {
                 color="primary" 
                 onPress={handleSubmit}
                 className={formData.type === 'ingreso' ? 'bg-positive' : 'bg-banorte-red'}
-                startContent={
-                  formData.type === 'ingreso' ? (
-                    <TrendingUp size={18} />
-                  ) : (
-                    <TrendingDown size={18} />
-                  )
-                }
+                isLoading={isLoading}
+                isDisabled={isLoading}
               >
-                {formData.type === 'ingreso' ? 'Agregar Ingreso' : 'Agregar Gasto'}
+                {isLoading ? 'Guardando...' : 'Agregar'}
               </Button>
             </ModalFooter>
           </>

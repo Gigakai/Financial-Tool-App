@@ -3,6 +3,7 @@ import { Button, Input, Card, CardBody, Chip, Avatar } from '@nextui-org/react'
 import { X, Send, Bot as BotIcon, Target, BarChart3, Activity, AlertTriangle } from 'lucide-react'
 import ChatWelcome from './ChatWelcome'
 import api from '../../services/api'
+import { useChatContext } from '../../contexts/ChatContext'
 
 // Helper para obtener las etiquetas de las herramientas
 const getToolLabel = (toolName) => {
@@ -24,6 +25,8 @@ const ChatBot = ({ isOpen, onClose }) => {
   const [showWelcome, setShowWelcome] = useState(true)
   const [error, setError] = useState(null)
   const messagesEndRef = useRef(null)
+  const { initialMessage } = useChatContext()
+  const hasProcessedInitialMessage = useRef(false)
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -104,6 +107,19 @@ const ChatBot = ({ isOpen, onClose }) => {
       handleSend()
     }
   }
+
+  // Process initial message when chat opens with one
+  useEffect(() => {
+    if (isOpen && initialMessage && !hasProcessedInitialMessage.current) {
+      hasProcessedInitialMessage.current = true
+      // Send the initial message automatically
+      handleSend(initialMessage)
+    } else if (!isOpen) {
+      // Reset the flag when chat closes
+      hasProcessedInitialMessage.current = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, initialMessage])
 
   if (!isOpen) return null
 
