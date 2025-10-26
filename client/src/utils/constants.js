@@ -1,5 +1,11 @@
 // Constantes de la aplicación
 
+// Configuración de API
+export const API_CONFIG = {
+  DEFAULT_EMPRESA_ID: import.meta.env.VITE_DEFAULT_EMPRESA_ID || 'E001',
+  API_BASE_URL: import.meta.env.VITE_API_URL || 'http://localhost:3000',
+}
+
 export const COLORS = {
   banorte: {
     red: '#EB0029',

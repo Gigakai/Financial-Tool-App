@@ -2,12 +2,27 @@ import { useState, useRef, useEffect } from 'react'
 import { Button, Input, Card, CardBody, Chip, Avatar } from '@nextui-org/react'
 import { X, Send, Bot as BotIcon, Target, BarChart3, Activity, AlertTriangle } from 'lucide-react'
 import ChatWelcome from './ChatWelcome'
+import api from '../../services/api'
+
+// Helper para obtener las etiquetas de las herramientas
+const getToolLabel = (toolName) => {
+  const toolLabels = {
+    simulateFinancialScenario: '🎯 Simulador',
+    getFinancialSummary: '📊 Resumen',
+    getFinancialHealthCheck: '💚 Health Check',
+    checkForFinancialAlerts: '⚠️ Alertas',
+    getProfitabilityAnalysis: '💰 Rentabilidad',
+    fallback: '💬 Conversación',
+  }
+  return toolLabels[toolName] || '🤖 IA'
+}
 
 const ChatBot = ({ isOpen, onClose }) => {
   const [messages, setMessages] = useState([])
   const [inputValue, setInputValue] = useState('')
   const [isTyping, setIsTyping] = useState(false)
   const [showWelcome, setShowWelcome] = useState(true)
+  const [error, setError] = useState(null)
   const messagesEndRef = useRef(null)
 
   const scrollToBottom = () => {
@@ -32,27 +47,51 @@ const ChatBot = ({ isOpen, onClose }) => {
     if (showWelcome) setShowWelcome(false)
 
     const userMessage = {
-      id: messages.length + 1,
+      id: Date.now(),
       type: 'user',
       text: text.trim(),
       timestamp: new Date(),
     }
 
-    setMessages([...messages, userMessage])
+    setMessages((prev) => [...prev, userMessage])
     setInputValue('')
     setIsTyping(true)
+    setError(null)
 
-    // Simular respuesta del bot
-    setTimeout(() => {
+    try {
+      // Llamar al API del CFO Virtual
+      const response = await api.askCFO(text.trim())
+      
+      // Extraer la respuesta del LLM
+      const botText = response.response || 'Lo siento, no pude procesar tu solicitud.'
+      const toolUsed = response.toolUsed || 'unknown'
+      
       const botMessage = {
-        id: messages.length + 2,
+        id: Date.now() + 1,
         type: 'bot',
-        text: `Entiendo que quieres: "${text.trim()}". Estoy procesando tu solicitud con mis herramientas de análisis financiero...`,
+        text: botText,
         timestamp: new Date(),
+        toolUsed,
+        data: response.data, // Datos adicionales del MCP si se necesitan
       }
+      
       setMessages((prev) => [...prev, botMessage])
       setIsTyping(false)
-    }, 1500)
+    } catch (error) {
+      console.error('Error al enviar mensaje:', error)
+      setIsTyping(false)
+      
+      const errorMessage = {
+        id: Date.now() + 1,
+        type: 'bot',
+        text: '⚠️ Disculpa, tuve un problema al conectar con el servidor. Por favor, asegúrate de que el servidor esté corriendo e intenta de nuevo.',
+        timestamp: new Date(),
+        isError: true,
+      }
+      
+      setMessages((prev) => [...prev, errorMessage])
+      setError('Error de conexión con el servidor')
+    }
   }
 
   const handleQuickAction = (action) => {
@@ -127,19 +166,36 @@ const ChatBot = ({ isOpen, onClose }) => {
                   <BotIcon size={18} className="text-white" />
                 </div>
               )}
-              <div
-                className={`
-                  max-w-[75%] px-4 py-3 rounded-2xl
-                  ${message.type === 'user'
-                    ? 'bg-banorte-red text-white rounded-br-sm'
-                    : 'bg-white text-gray-800 shadow-sm rounded-bl-sm'
-                  }
-                `}
-              >
-                <p className="text-sm leading-relaxed">{message.text}</p>
-                <span className={`text-xs mt-1 block ${message.type === 'user' ? 'text-red-100' : 'text-gray-400'}`}>
-                  {message.timestamp.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
-                </span>
+              <div className="flex flex-col gap-1 max-w-[75%]">
+                <div
+                  className={`
+                    px-4 py-3 rounded-2xl
+                    ${message.type === 'user'
+                      ? 'bg-banorte-red text-white rounded-br-sm'
+                      : message.isError 
+                        ? 'bg-red-50 text-red-800 shadow-sm rounded-bl-sm border border-red-200'
+                        : 'bg-white text-gray-800 shadow-sm rounded-bl-sm'
+                    }
+                  `}
+                >
+                  <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.text}</p>
+                  <span className={`text-xs mt-1 block ${message.type === 'user' ? 'text-red-100' : message.isError ? 'text-red-400' : 'text-gray-400'}`}>
+                    {message.timestamp.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+                {/* Tool badge para mensajes del bot */}
+                {message.type === 'bot' && message.toolUsed && !message.isError && (
+                  <div className="flex items-center gap-1 px-2">
+                    <Chip
+                      size="sm"
+                      variant="flat"
+                      color="primary"
+                      className="text-xs h-5"
+                    >
+                      {getToolLabel(message.toolUsed)}
+                    </Chip>
+                  </div>
+                )}
               </div>
             </div>
           ))}

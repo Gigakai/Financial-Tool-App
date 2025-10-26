@@ -648,6 +648,18 @@ app.get('/check-alerts/:empresa_id', async (req, res) => {
     }
 });
 
+/**
+ * Health check endpoint
+ * Verifica que el servidor esté funcionando correctamente
+ */
+app.get('/health', (req, res) => {
+    res.json({ 
+        status: 'ok', 
+        message: 'CFO Virtual API is running',
+        timestamp: new Date().toISOString()
+    });
+});
+
 // --- 5. Iniciar todo ---
 (async () => {
     try {

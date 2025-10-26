@@ -1,5 +1,6 @@
 import { Button, Badge, Avatar, Dropdown, DropdownTrigger, DropdownMenu, DropdownItem } from '@nextui-org/react'
 import { Menu, Bot, Bell, ChevronDown } from 'lucide-react'
+import ConnectionStatus from './ConnectionStatus'
 
 const Header = ({ onMenuClick, onChatClick }) => {
   return (
@@ -89,6 +90,9 @@ const Header = ({ onMenuClick, onChatClick }) => {
 
         {/* Right Section */}
         <div className="flex items-center gap-4">
+          {/* Connection Status */}
+          <ConnectionStatus />
+          
           {/* AI Chat Button - Desktop */}
           <Button
             color="primary"
