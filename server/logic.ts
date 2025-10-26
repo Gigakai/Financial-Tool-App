@@ -1,5 +1,34 @@
 import fs from 'fs';
 import csv from 'csv-parser';
+import dotenv from 'dotenv';
+import mysql from 'mysql2/promise';
+
+dotenv.config();
+
+let pool: mysql.Pool | null = null;
+
+function initDbPool() {
+    if (pool) return pool;
+    const host = process.env.DB_HOST;
+    const port = process.env.DB_PORT ? parseInt(process.env.DB_PORT) : 3306;
+    const user = process.env.DB_USER;
+    const password = process.env.DB_PASSWORD;
+    const database = process.env.DB_NAME;
+
+    if (!host || !user || !database) {
+        console.warn('MySQL no configurado en .env; se usará fallback a CSV. Variables necesarias: DB_HOST, DB_USER, DB_NAME');
+        return null;
+    }
+
+    try {
+        pool = mysql.createPool({ host, port, user, password, database, connectionLimit: 5 });
+        return pool;
+    } catch (e: any) {
+        console.error('Error al crear el pool MySQL:', e.message);
+        pool = null;
+        return null;
+    }
+}
 
 interface Transaction {
     empresa_id: string;
@@ -10,8 +39,50 @@ interface Transaction {
     monto: number;
 }
 
+// Helper para formatear Date a YYYY-MM-DD (SQL)
+function formatDateForSql(d: Date) {
+    const yyyy = d.getUTCFullYear();
+    const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(d.getUTCDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+}
+
 // Función para leer los datos y calcular el gasto mensual promedio
 async function getAverageMonthlyBurn(empresa_id: string): Promise<number> {
+    const poolLocal = initDbPool();
+    if (poolLocal) {
+        try {
+            // Traer gastos de la DB para la empresa
+            const [rows]: any = await poolLocal.query(
+                'SELECT fecha, monto FROM databanorte WHERE empresa_id = ? AND tipo = "gasto"',
+                [empresa_id]
+            );
+
+            if (!rows || rows.length === 0) {
+                // Fallback a 0 si no hay datos
+                return 0;
+            }
+
+            // Calcular meses únicos y suma de montos
+            const months = new Set<string>();
+            let totalExpenses = 0;
+            for (const r of rows) {
+                // fecha puede venir como Date o string YYYY-MM-DD
+                const fechaSql = (r.fecha instanceof Date) ? r.fecha.toISOString().slice(0, 10) : String(r.fecha);
+                const [year, month] = fechaSql.split('-');
+                months.add(`${year}-${month}`);
+                const m = parseFloat(r.monto);
+                if (!isNaN(m)) totalExpenses += m;
+            }
+            const totalMonths = months.size > 0 ? months.size : 1;
+            return totalExpenses / totalMonths;
+        } catch (e: any) {
+            console.error('Error consultando MySQL en getAverageMonthlyBurn, usando CSV fallback:', e.message);
+            // continue to CSV fallback below
+        }
+    }
+
+    // CSV fallback (existing behavior)
     const transactions: Transaction[] = [];
     return new Promise((resolve, reject) => {
         fs.createReadStream('data.csv')
@@ -94,10 +165,6 @@ export async function calculateRisk(empresa_id: string, recurringCost: number, o
 }
 
 
-// ... (código existente de getAverageMonthlyBurn, getBufferMonthsFromProfile, calculateRisk) ...
-
-// ... (código existente de getAverageMonthlyBurn, getBufferMonthsFromProfile, calculateRisk) ...
-
 export async function checkForFinancialAlerts(empresa_id: string): Promise<any[]> {
     const allStates = JSON.parse(fs.readFileSync('state.json', 'utf-8'));
     const companyState = allStates[empresa_id];
@@ -130,59 +197,84 @@ export async function checkForFinancialAlerts(empresa_id: string): Promise<any[]
         }
     }
 
-    // --- Lógica de Alertas de Presupuesto (Mejorada) ---
-    return new Promise((resolve, reject) => {
-        fs.createReadStream('data.csv')
-            .pipe(csv())
-            .on('data', (row) => {
-                const dateParts = row.fecha.split('/');
-                const month = parseInt(dateParts[0]);
-                const year = parseInt(dateParts[2]);
-                const isCurrentMonth = (month === 10 && year === 2025);
+    // Intentar usar DB para obtener gastos del mes actual por categoría
+    const poolLocal = initDbPool();
+    if (poolLocal) {
+        try {
+            // Determinar mes actual (mantener la misma fecha fija para reproducibilidad)
+            const today = new Date(Date.UTC(2025, 9, 25, 0, 0, 0)); // Oct 25, 2025 UTC
+            const firstDay = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
+            const lastDay = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 0));
 
-                if (row.empresa_id === empresa_id && row.tipo === 'gasto' && isCurrentMonth) {
-                    const amount = parseFloat(row.monto);
-                    actualSpending[row.categoria] = (actualSpending[row.categoria] || 0) + amount;
-                }
-            })
-            .on('end', () => {
-                // --- MEJORA 2: Lógica de Alerta de Ritmo de Gasto (Pacing) ---
-                const currentDay = 25; // Asumimos que hoy es 25
-                const daysInMonth = 31; // Octubre
-                const monthProgress = currentDay / daysInMonth; // ~80% del mes ha pasado
+            const sql = `SELECT categoria, SUM(CAST(monto AS DECIMAL(18,2))) as total FROM databanorte WHERE empresa_id = ? AND tipo = 'gasto' AND fecha >= ? AND fecha <= ? GROUP BY categoria`;
+            const [rows]: any = await poolLocal.query(sql, [empresa_id, formatDateForSql(firstDay), formatDateForSql(lastDay)]);
 
-                for (const category in budgets) {
-                    const budget = budgets[category];
-                    const spent = actualSpending[category] || 0;
+            for (const r of rows) {
+                actualSpending[r.categoria || 'Sin Categoría'] = parseFloat(r.total) || 0;
+            }
+        } catch (e: any) {
+            console.error('Error consultando MySQL en checkForFinancialAlerts, usando CSV fallback:', e.message);
+            // Fall through al comportamiento de CSV
+        }
+    }
 
-                    // Alerta 1: Presupuesto ya excedido (la que ya tenías)
-                    if (spent > budget) {
-                        const variance = ((spent / budget) * 100).toFixed(0);
-                        alerts.push({
-                            type: 'BUDGET_EXCEEDED',
-                            severity: 'Alto',
-                            category: category,
-                            message: `¡Alerta! Se ha superado el presupuesto de '${category}'. Gasto actual: $${spent.toFixed(0)} de un presupuesto de $${budget} (${variance}%).`
-                        });
-                    } 
-                    // Alerta 2: Ritmo de gasto es demasiado rápido
-                    else {
-                        const budgetSpentPercentage = spent / budget;
-                        // Alerta si el gasto % es mucho mayor que el tiempo % transcurrido
-                        if (budgetSpentPercentage > monthProgress * 1.2) { // Ej: si el gasto va un 20% más rápido que el tiempo
-                             alerts.push({
-                                type: 'PACING_WARNING',
-                                severity: 'Medio',
-                                category: category,
-                                message: `Atención: El ritmo de gasto en '${category}' es muy alto. Ya se ha consumido un ${(budgetSpentPercentage * 100).toFixed(0)}% del presupuesto cuando solo ha pasado un ${(monthProgress * 100).toFixed(0)}% del mes.`
-                            });
-                        }
+    // Si actualSpending está vacío, usar CSV fallback (o si DB fallo parcialmente)
+    const hasActuals = Object.keys(actualSpending).length > 0;
+    if (!hasActuals) {
+        // --- Lógica de lectura CSV existente (filtrar por mes actual fijo) ---
+        await new Promise<void>((resolve, reject) => {
+            fs.createReadStream('data.csv')
+                .pipe(csv())
+                .on('data', (row) => {
+                    const dateParts = row.fecha.split('/');
+                    const month = parseInt(dateParts[0]);
+                    const year = parseInt(dateParts[2]);
+                    const isCurrentMonth = (month === 10 && year === 2025);
+
+                    if (row.empresa_id === empresa_id && row.tipo === 'gasto' && isCurrentMonth) {
+                        const amount = parseFloat(row.monto);
+                        actualSpending[row.categoria] = (actualSpending[row.categoria] || 0) + amount;
                     }
-                }
-                resolve(alerts);
-            })
-            .on('error', reject);
-    });
+                })
+                .on('end', () => resolve())
+                .on('error', reject);
+        });
+    }
+
+    // --- Lógica de Alertas de Presupuesto (Mejorada) ---
+    const currentDay = 25; // Asumimos que hoy es 25
+    const daysInMonth = 31; // Octubre
+    const monthProgress = currentDay / daysInMonth; // ~80% del mes ha pasado
+
+    for (const category in budgets) {
+        const budget = budgets[category];
+        const spent = actualSpending[category] || 0;
+
+        // Alerta 1: Presupuesto ya excedido (la que ya tenías)
+        if (spent > budget) {
+            const variance = ((spent / budget) * 100).toFixed(0);
+            alerts.push({
+                type: 'BUDGET_EXCEEDED',
+                severity: 'Alto',
+                category: category,
+                message: `¡Alerta! Se ha superado el presupuesto de '${category}'. Gasto actual: $${spent.toFixed(0)} de un presupuesto de $${budget} (${variance}%).`
+            });
+        }
+        // Alerta 2: Ritmo de gasto es demasiado rápido
+        else {
+            const budgetSpentPercentage = spent / budget;
+            // Alerta si el gasto % es mucho mayor que el tiempo % transcurrido
+            if (budgetSpentPercentage > monthProgress * 1.2) { // Ej: si el gasto va un 20% más rápido que el tiempo
+                alerts.push({
+                    type: 'PACING_WARNING',
+                    severity: 'Medio',
+                    category: category,
+                    message: `Atención: El ritmo de gasto en '${category}' es muy alto. Ya se ha consumido un ${(budgetSpentPercentage * 100).toFixed(0)}% del presupuesto cuando solo ha pasado un ${(monthProgress * 100).toFixed(0)}% del mes.`
+                });
+            }
+        }
+    }
+    return alerts;
 }
 
 // Funciones para la herramienta del "Analista"
@@ -264,6 +356,78 @@ export async function getSummary(
     startDate?: string,
     endDate?: string
 ) {
+    const poolLocal = initDbPool();
+
+    // Si tenemos pool, intentamos hacer consultas SQL con filtros
+    if (poolLocal) {
+        try {
+            // Si startDate/endDate se proporcionan en formato MM/DD/YYYY -> convertir a YYYY-MM-DD
+            let sqlStart: string | undefined;
+            let sqlEnd: string | undefined;
+            if (startDate) {
+                sqlStart = formatDateForSql(parseHackathonDate(startDate));
+            }
+            if (endDate) {
+                sqlEnd = formatDateForSql(parseHackathonDate(endDate));
+            }
+
+            // Si no hay rango manual, calcular según timePeriod usando la misma fecha fija
+            if (!sqlStart && !sqlEnd) {
+                const today = new Date(Date.UTC(2025, 9, 25, 0, 0, 0));
+                if (timePeriod === 'current_month') {
+                    const first = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
+                    const last = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 0));
+                    sqlStart = formatDateForSql(first);
+                    sqlEnd = formatDateForSql(last);
+                } else if (timePeriod === 'last_30_days') {
+                    const start = subtractDaysUTC(today, 30);
+                    sqlStart = formatDateForSql(start);
+                    sqlEnd = formatDateForSql(today);
+                } else if (timePeriod === 'last_90_days') {
+                    const start = subtractDaysUTC(today, 90);
+                    sqlStart = formatDateForSql(start);
+                    sqlEnd = formatDateForSql(today);
+                }
+            }
+
+            // Construir cláusula WHERE dinámica
+            const whereClauses = ['empresa_id = ?','tipo = ?'];
+            const params: any[] = [empresa_id, tipo];
+            if (categoria) {
+                whereClauses.push('LOWER(categoria) = ?');
+                params.push(categoria.toLowerCase());
+            }
+            if (sqlStart && sqlEnd) {
+                whereClauses.push('fecha >= ? AND fecha <= ?');
+                params.push(sqlStart, sqlEnd);
+            }
+            const where = whereClauses.join(' AND ');
+
+            // 1) Total y count
+            const sumSql = `SELECT COUNT(*) as cnt, COALESCE(SUM(CAST(monto AS DECIMAL(18,2))),0) as total FROM databanorte WHERE ${where}`;
+            const [sumRows]: any = await poolLocal.query(sumSql, params);
+            const totalAmount = parseFloat(sumRows[0].total) || 0;
+            const transactionCount = parseInt(sumRows[0].cnt) || 0;
+
+            // 2) Top 3 transacciones
+            const topSql = `SELECT fecha, concepto, CAST(monto AS DECIMAL(18,2)) as monto FROM databanorte WHERE ${where} ORDER BY CAST(monto AS DECIMAL(18,2)) DESC LIMIT 3`;
+            const [topRows]: any = await poolLocal.query(topSql, params);
+
+            const topTransactions = topRows.map((r: any) => ({ fecha: formatDateForSql(new Date(r.fecha)), concepto: r.concepto, monto: parseFloat(r.monto) }));
+
+            return {
+                totalAmount: parseFloat(totalAmount.toFixed(2)),
+                transactionCount: transactionCount,
+                topTransactions
+            };
+
+        } catch (e: any) {
+            console.error('Error consultando MySQL en getSummary, usando CSV fallback:', e.message);
+            // continuar hacia fallback CSV
+        }
+    }
+
+    // CSV fallback (existente)
     const transactions: Transaction[] = [];
 
     return new Promise((resolve, reject) => {
@@ -346,7 +510,7 @@ export async function calculateHealthReport(empresa_id: string) {
 
         let percentage = 0;
         if (budgetAmount > 0) { // Evitar división por cero
-             percentage = (spentAmount / budgetAmount) * 100;
+            percentage = (spentAmount / budgetAmount) * 100;
         }
 
         let status = 'OK';
@@ -390,4 +554,156 @@ export async function calculateHealthReport(empresa_id: string) {
             keyInsights: keyInsights
         }
     };
+}
+
+interface ProfitabilityEntry {
+    category: string;
+    totalIngresos: number;
+    totalGastos: number;
+    netProfit: number;
+    profitMargin: number; // %
+}
+
+interface ProfitabilityData {
+    [key: string]: {
+        totalIngresos: number;
+        totalGastos: number;
+    };
+}
+
+export async function calculateProfitability(
+    empresa_id: string,
+    timePeriod: string,
+    startDate?: string,
+    endDate?: string
+): Promise<ProfitabilityEntry[]> {
+
+    const dataByCat: ProfitabilityData = {};
+    const poolLocal = initDbPool();
+
+    if (poolLocal) {
+        try {
+            // Calcular rango de fechas similar al getSummary
+            let sqlStart: string | undefined;
+            let sqlEnd: string | undefined;
+            if (startDate) sqlStart = formatDateForSql(parseHackathonDate(startDate));
+            if (endDate) sqlEnd = formatDateForSql(parseHackathonDate(endDate));
+            if (!sqlStart && !sqlEnd) {
+                const today = new Date(Date.UTC(2025, 9, 25, 0, 0, 0));
+                if (timePeriod === 'current_month') {
+                    const first = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
+                    const last = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 0));
+                    sqlStart = formatDateForSql(first);
+                    sqlEnd = formatDateForSql(last);
+                } else if (timePeriod === 'last_30_days') {
+                    const start = subtractDaysUTC(today, 30);
+                    sqlStart = formatDateForSql(start);
+                    sqlEnd = formatDateForSql(today);
+                } else if (timePeriod === 'last_90_days') {
+                    const start = subtractDaysUTC(today, 90);
+                    sqlStart = formatDateForSql(start);
+                    sqlEnd = formatDateForSql(today);
+                }
+            }
+
+            const whereParts = ['empresa_id = ?'];
+            const params: any[] = [empresa_id];
+            if (sqlStart && sqlEnd) {
+                whereParts.push('fecha >= ? AND fecha <= ?');
+                params.push(sqlStart, sqlEnd);
+            }
+            const where = whereParts.join(' AND ');
+
+            // Query que agrupa por categoria y suma ingresos/gastos
+            const sql = `SELECT categoria,
+                            SUM(CASE WHEN tipo = 'ingreso' THEN CAST(monto AS DECIMAL(18,2)) ELSE 0 END) as totalIngresos,
+                            SUM(CASE WHEN tipo = 'gasto' THEN CAST(monto AS DECIMAL(18,2)) ELSE 0 END) as totalGastos
+                         FROM databanorte
+                         WHERE ${where}
+                         GROUP BY categoria`;
+
+            const [rows]: any = await poolLocal.query(sql, params);
+            for (const r of rows) {
+                const category = r.categoria || 'Sin Categoría';
+                dataByCat[category] = {
+                    totalIngresos: parseFloat(r.totalIngresos) || 0,
+                    totalGastos: parseFloat(r.totalGastos) || 0
+                };
+            }
+
+            // Transformar en reporte
+            const report: ProfitabilityEntry[] = Object.keys(dataByCat).map(category => {
+                const { totalIngresos, totalGastos } = dataByCat[category];
+                const netProfit = totalIngresos - totalGastos;
+                const profitMargin = totalIngresos > 0
+                    ? (netProfit / totalIngresos) * 100
+                    : (netProfit < 0 ? -100 : 0);
+                return {
+                    category,
+                    totalIngresos: parseFloat(totalIngresos.toFixed(2)),
+                    totalGastos: parseFloat(totalGastos.toFixed(2)),
+                    netProfit: parseFloat(netProfit.toFixed(2)),
+                    profitMargin: parseFloat(profitMargin.toFixed(1))
+                };
+            });
+
+            return report.sort((a,b) => b.netProfit - a.netProfit);
+
+        } catch (e: any) {
+            console.error('Error consultando MySQL en calculateProfitability, usando CSV fallback:', e.message);
+            // Seguir a fallback CSV
+        }
+    }
+
+    // CSV fallback (existente)
+    return new Promise((resolve, reject) => {
+        fs.createReadStream('data.csv')
+            .pipe(csv())
+            .on('data', (row) => {
+                // 1. Filtrar por empresa y rango de fechas
+                if (row.empresa_id !== empresa_id) return;
+                if (!checkDate(row.fecha, timePeriod, startDate, endDate)) return;
+
+                const category = row.categoria || 'Sin Categoría';
+                const amount = parseFloat(row.monto);
+
+                // 2. Inicializar si la categoría es nueva
+                if (!dataByCat[category]) {
+                    dataByCat[category] = { totalIngresos: 0, totalGastos: 0 };
+                }
+
+                // 3. Acumular ingresos o gastos
+                if (row.tipo === 'ingreso') {
+                    dataByCat[category].totalIngresos += amount;
+                } else if (row.tipo === 'gasto') {
+                    dataByCat[category].totalGastos += amount;
+                }
+            })
+            .on('end', () => {
+                // 4. Transformar el mapa en un array con cálculos
+                const report: ProfitabilityEntry[] = Object.keys(dataByCat).map(category => {
+                    const { totalIngresos, totalGastos } = dataByCat[category];
+                    const netProfit = totalIngresos - totalGastos;
+
+                    // Evitar división por cero
+                    const profitMargin = totalIngresos > 0
+                        ? (netProfit / totalIngresos) * 100
+                        : (netProfit < 0 ? -100 : 0); // Si no hay ingresos, el margen es -100% (pérdida) o 0%
+
+                    return {
+                        category,
+                        totalIngresos: parseFloat(totalIngresos.toFixed(2)),
+                        totalGastos: parseFloat(totalGastos.toFixed(2)),
+                        netProfit: parseFloat(netProfit.toFixed(2)),
+                        profitMargin: parseFloat(profitMargin.toFixed(1))
+                    };
+                });
+
+                // 5. Ordenar: las más rentables (mayor netProfit) primero
+                const sortedReport = report.sort((a, b) => b.netProfit - a.netProfit);
+
+                resolve(sortedReport);
+            })
+            .on('error', reject);
+    });
 }
