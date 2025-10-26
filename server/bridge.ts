@@ -14,6 +14,10 @@ import {GoogleGenerativeAI} from '@google/generative-ai';
 
 
 import 'dotenv/config'; // Asegúrate de tener .env con GEMINI_API_KEY
+import { addTransaction } from './logic.js';
+
+
+
 
 
 // --- 1. Configuración del Cliente Gemini ---
@@ -658,6 +662,55 @@ app.get('/health', (req, res) => {
         message: 'CFO Virtual API is running',
         timestamp: new Date().toISOString()
     });
+});
+
+/**
+ * Endpoint REST para agregar transacciones
+ * POST /transactions
+ * Body: { empresa_id, fecha, tipo, concepto, categoria, monto }
+ */
+app.post('/transactions', async (req, res) => {
+    try {
+        const { empresa_id, fecha, tipo, concepto, categoria, monto } = req.body;
+
+        // Validar campos requeridos
+        if (!empresa_id || !fecha || !tipo || !concepto || !categoria || monto === undefined) {
+            return res.status(400).json({
+                success: false,
+                error: 'Faltan campos requeridos: empresa_id, fecha, tipo, concepto, categoria, monto'
+            });
+        }
+
+        // Validar tipo
+        if (tipo !== 'ingreso' && tipo !== 'gasto') {
+            return res.status(400).json({
+                success: false,
+                error: 'El campo "tipo" debe ser "ingreso" o "gasto"'
+            });
+        }
+
+        // Llamar a la función de logic.ts
+        const result = await addTransaction({
+            empresa_id,
+            fecha,
+            tipo,
+            concepto,
+            categoria,
+            monto: Number(monto)
+        });
+
+        if (result.success) {
+            res.status(201).json(result);
+        } else {
+            res.status(400).json(result);
+        }
+    } catch (error: any) {
+        console.error('[Bridge] Error en POST /transactions:', error.message);
+        res.status(500).json({
+            success: false,
+            error: `Error interno del servidor: ${error.message}`
+        });
+    }
 });
 
 // --- 5. Iniciar todo ---

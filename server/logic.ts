@@ -571,6 +571,74 @@ interface ProfitabilityData {
     };
 }
 
+// Función para agregar una nueva transacción
+export async function addTransaction(transactionData: Transaction): Promise<{ success: boolean; message: string; transaction?: Transaction }> {
+    const dbPool = initDbPool();
+
+    // Validar datos requeridos
+    if (!transactionData.empresa_id || !transactionData.fecha || !transactionData.tipo ||
+        !transactionData.concepto || !transactionData.categoria || transactionData.monto === undefined) {
+        return { success: false, message: 'Faltan campos requeridos en la transacción' };
+    }
+
+    // Validar tipo
+    if (transactionData.tipo !== 'ingreso' && transactionData.tipo !== 'gasto') {
+        return { success: false, message: 'El tipo debe ser "ingreso" o "gasto"' };
+    }
+
+    try {
+        if (dbPool) {
+            // Insertar en MySQL
+            // Convertir fecha de MM/DD/YYYY a YYYY-MM-DD para MySQL
+            let fechaSQL: string;
+            try {
+                const parsedDate = parseHackathonDate(transactionData.fecha);
+                fechaSQL = formatDateForSql(parsedDate);
+            } catch (e) {
+                return { success: false, message: 'Formato de fecha inválido. Use MM/DD/YYYY' };
+            }
+
+            const query = `
+                INSERT INTO databanorte (empresa_id, fecha, tipo, concepto, categoria, monto)
+                VALUES (?, ?, ?, ?, ?, ?)
+            `;
+            await dbPool.execute(query, [
+                transactionData.empresa_id,
+                fechaSQL,
+                transactionData.tipo,
+                transactionData.concepto,
+                transactionData.categoria,
+                transactionData.monto
+            ]);
+
+            console.log(`[Logic] Transacción insertada en MySQL para empresa ${transactionData.empresa_id}`);
+            return {
+                success: true,
+                message: 'Transacción agregada exitosamente',
+                transaction: transactionData
+            };
+        } else {
+            // Fallback a CSV - el CSV usa formato MM/DD/YYYY original
+            const csvLine = `${transactionData.empresa_id},${transactionData.fecha},${transactionData.tipo},${transactionData.concepto},${transactionData.categoria},${transactionData.monto}\n`;
+
+            fs.appendFileSync('data.csv', csvLine, 'utf-8');
+            console.log(`[Logic] Transacción agregada al CSV para empresa ${transactionData.empresa_id}`);
+
+            return {
+                success: true,
+                message: 'Transacción agregada exitosamente al CSV',
+                transaction: transactionData
+            };
+        }
+    } catch (error: any) {
+        console.error('[Logic] Error al agregar transacción:', error.message);
+        return {
+            success: false,
+            message: `Error al agregar transacción: ${error.message}`
+        };
+    }
+}
+
 export async function calculateProfitability(
     empresa_id: string,
     timePeriod: string,
